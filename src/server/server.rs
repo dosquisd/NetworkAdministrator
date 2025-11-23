@@ -6,7 +6,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 use hyper_util::server::conn::auto;
 use tokio::net::TcpListener;
 
-use crate::server::services::handler_example;
+use crate::server::services::handler_request;
 
 pub async fn start_server(
     host: String,
@@ -29,7 +29,7 @@ pub async fn start_server(
 
         tokio::task::spawn(async move {
             if let Err(err) = auto::Builder::new(TokioExecutor::new())
-                .serve_connection(io, service_fn(handler_example))
+                .serve_connection(io, service_fn(handler_request))
                 .await
             {
                 eprintln!("Error serving connection: {}", err);
