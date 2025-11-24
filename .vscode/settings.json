@@ -1,0 +1,8 @@
+{
+    "[rust]": {
+        "editor.semanticHighlighting.enabled": false
+    },
+    "rust-analyzer.linkedProjects": [
+        "${workspaceFolder}/Cargo.toml"
+    ],
+}
