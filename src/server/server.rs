@@ -8,6 +8,7 @@ use tokio::net::TcpListener;
 
 use crate::server::services::handler_request;
 
+#[tracing::instrument(level = "info", name = "Server")]
 pub async fn start_server(
     host: String,
     port: u16,
@@ -19,7 +20,7 @@ pub async fn start_server(
     };
 
     let addr = SocketAddr::new(ip, port);
-    println!("Starting server at http://{}\n", addr);
+    tracing::info!("Starting server at http://{}\n", addr);
 
     let listener = TcpListener::bind(addr).await?;
 
@@ -32,7 +33,7 @@ pub async fn start_server(
                 .serve_connection(io, service_fn(handler_request))
                 .await
             {
-                eprintln!("Error serving connection: {}", err);
+                tracing::error!("Error serving connection: {}", err);
             }
         });
     }

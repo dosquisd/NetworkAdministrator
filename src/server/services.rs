@@ -3,17 +3,23 @@ use std::convert::Infallible;
 use http_body_util::{BodyExt, Full};
 use hyper::{Request, Response, body};
 
-async fn handler_connect(
-    req: Request<body::Incoming>,
+#[warn(dead_code)]
+pub async fn handler_connect(
+    _req: Request<body::Incoming>,
 ) -> Result<Response<Full<body::Bytes>>, Infallible> {
     // This is a placeholder for handling CONNECT method
     // used for HTTPS tunneling.
     todo!("Implement CONNECT method handling");
 }
 
+#[tracing::instrument(level = "info", name = "HandlerRequest")]
 pub async fn handler_request(
     req: Request<body::Incoming>,
 ) -> Result<Response<Full<body::Bytes>>, Infallible> {
+    let req_id = uuid::Uuid::new_v4();
+
+    tracing::info!("Received request ID {}", req_id);
+
     // First step. Parse the request and print its details.
     let method = req.method().to_owned();
     let uri = req.uri().to_owned();
@@ -26,12 +32,10 @@ pub async fn handler_request(
     let scheme = match uri.scheme_str() {
         Some(scheme_str) => scheme_str,
         None => {
-            println!(
-                "URI scheme not found, inferring from port -- {:?}",
-                uri.port_u16()
-            );
+            let port = uri.port_u16();
+            tracing::warn!("URI scheme not found, inferring from port -- {:?}", port);
 
-            if uri.port_u16().unwrap_or(80) == 443 {
+            if port.unwrap_or(80) == 443 {
                 "https"
             } else {
                 "http"
@@ -54,7 +58,7 @@ pub async fn handler_request(
 
     // This should never failed if the server is acting as a proxy
     if let None = uri.authority() {
-        println!("No authority found in the URI");
+        tracing::error!("No authority found in the URI");
         return Ok(Response::new(Full::new(body::Bytes::from(
             "Error: No authority found in the URI",
         ))));
@@ -78,16 +82,17 @@ pub async fn handler_request(
         "PATCH" => reqwest::Method::PATCH,
         // "TRACE" => reqwest::Method::TRACE,
         _ => {
-            println!("Unsupported HTTP method: {}", method);
+            tracing::warn!("Unsupported HTTP method: {}", method);
             reqwest::Method::GET
         }
     };
 
-    println!(
-        "Forwarding request: {} {} {:?}",
-        reqwest_method, url, version
+    tracing::info!(
+        "Forwarding request ID {}: {} {}",
+        req_id,
+        reqwest_method,
+        url
     );
-
     let response = client
         .request(reqwest_method, url)
         .headers(headers)
@@ -105,7 +110,6 @@ pub async fn handler_request(
             match resp_body {
                 Ok(bytes) => {
                     let mut builder = Response::builder().status(status);
-
                     for (key, value) in resp_headers.iter() {
                         builder = builder.header(key, value);
                     }
@@ -113,14 +117,14 @@ pub async fn handler_request(
                     return Ok(builder.body(Full::new(body::Bytes::from(bytes))).unwrap());
                 }
                 Err(e) => {
-                    println!("Error reading response body: {}", e);
                     let error_response = format!("Error reading response body: {}", e);
+                    tracing::error!(error_response);
                     return Ok(Response::new(Full::new(body::Bytes::from(error_response))));
                 }
             }
         }
         Err(err) => {
-            println!("Error making request to destination server: {}", err);
+            tracing::error!("Error making request to destination server: {}", err);
             Ok(Response::new(Full::new(body::Bytes::from(format!(
                 "Error: {}",
                 err
