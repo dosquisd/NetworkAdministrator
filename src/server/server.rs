@@ -19,7 +19,7 @@ pub async fn start_server(
     };
 
     let addr = SocketAddr::new(ip, port);
-    println!("Starting server at http://{}", addr);
+    println!("Starting server at http://{}\n", addr);
 
     let listener = TcpListener::bind(addr).await?;
 
