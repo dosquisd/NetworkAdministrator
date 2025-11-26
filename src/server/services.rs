@@ -1,49 +1,37 @@
 use std::convert::Infallible;
 
+use http::{Request, Response};
 use http_body_util::{BodyExt, Full};
-use hyper::{Request, Response, body};
+use hyper::body;
 
-#[warn(dead_code)]
-pub async fn handler_connect(
-    _req: Request<body::Incoming>,
-) -> Result<Response<Full<body::Bytes>>, Infallible> {
-    // This is a placeholder for handling CONNECT method
-    // used for HTTPS tunneling.
-    todo!("Implement CONNECT method handling");
-}
-
-#[tracing::instrument(level = "info", name = "HandlerRequest")]
-pub async fn handler_request(
+async fn handler_https(
+    req_id: uuid::Uuid,
     req: Request<body::Incoming>,
 ) -> Result<Response<Full<body::Bytes>>, Infallible> {
-    let req_id = uuid::Uuid::new_v4();
+    let _method = req.method().to_owned();
+    let _uri = req.uri().to_owned();
+    let _version = req.version();
+    let _headers = req.headers().to_owned();
+    let _body = req.collect().await.unwrap().to_bytes();
+    let _scheme: &str = "https";
 
-    tracing::info!("Received request ID {}", req_id);
+    todo!(
+        "HTTPS handling is not yet implemented for request ID {}",
+        req_id
+    );
+}
 
-    // First step. Parse the request and print its details.
+async fn handler_http(
+    req_id: uuid::Uuid,
+    req: Request<body::Incoming>,
+) -> Result<Response<Full<body::Bytes>>, Infallible> {
     let method = req.method().to_owned();
     let uri = req.uri().to_owned();
     let version = req.version();
     let headers = req.headers().to_owned();
     let body = req.collect().await.unwrap().to_bytes();
+    let scheme: &str = "http";
 
-    // Try to get the port from the URI to identify the scheme (http or https), this is because
-    // the scheme is not always present in the URI.
-    let scheme = match uri.scheme_str() {
-        Some(scheme_str) => scheme_str,
-        None => {
-            let port = uri.port_u16();
-            tracing::warn!("URI scheme not found, inferring from port -- {:?}", port);
-
-            if port.unwrap_or(80) == 443 {
-                "https"
-            } else {
-                "http"
-            }
-        }
-    };
-
-    // Second step. Make the request to the destination server.
     let client_builder = reqwest::ClientBuilder::new();
     let client_builder = match version {
         http::Version::HTTP_09 => client_builder.http09_responses(),
@@ -129,6 +117,49 @@ pub async fn handler_request(
                 "Error: {}",
                 err
             )))))
+        }
+    }
+}
+
+#[tracing::instrument(level = "info", name = "HandlerRequest")]
+pub async fn handler_request(
+    req: Request<body::Incoming>,
+) -> Result<Response<Full<body::Bytes>>, Infallible> {
+    let req_id = uuid::Uuid::new_v4();
+
+    tracing::info!("Received request ID {}", req_id);
+
+    let uri = req.uri().to_owned();
+    // Try to get the port from the URI to identify the scheme (http or https), this is because
+    // the scheme is not always present in the URI.
+    let scheme = match uri.scheme_str() {
+        Some(scheme_str) => scheme_str,
+        None => {
+            let port = uri.port_u16();
+            tracing::warn!("URI scheme not found, inferring from port -- {:?}", port);
+
+            if port.unwrap_or(80) == 443 {
+                "https"
+            } else {
+                "http"
+            }
+        }
+    };
+
+    match scheme {
+        "http" => {
+            tracing::info!("Handling HTTP request ID {}", req_id);
+            handler_http(req_id, req).await
+        }
+        "https" => {
+            tracing::info!("Handling HTTPS request ID {}", req_id);
+            handler_https(req_id, req).await
+        }
+        _ => {
+            tracing::error!("Unsupported URI scheme: {}", scheme);
+            Ok(Response::new(Full::new(body::Bytes::from(
+                "Error: Unsupported URI scheme",
+            ))))
         }
     }
 }
