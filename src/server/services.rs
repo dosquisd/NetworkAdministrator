@@ -1,36 +1,114 @@
 use std::convert::Infallible;
+use std::net::SocketAddr;
 
 use http::{Request, Response};
 use http_body_util::{BodyExt, Full};
 use hyper::body;
+use tokio::{
+    io::AsyncWriteExt,
+    net::TcpStream,
+    time::{self as TokioTime, Duration},
+};
 
-async fn handler_https(
-    req_id: uuid::Uuid,
-    req: Request<body::Incoming>,
-) -> Result<Response<Full<body::Bytes>>, Infallible> {
-    let _method = req.method().to_owned();
-    let _uri = req.uri().to_owned();
-    let _version = req.version();
-    let _headers = req.headers().to_owned();
-    let _body = req.collect().await.unwrap().to_bytes();
-    let _scheme: &str = "https";
+use super::utils::{DNS_RESOLVER, read_all_buffer};
 
-    todo!(
-        "HTTPS handling is not yet implemented for request ID {}",
-        req_id
+#[tracing::instrument(level = "info", name = "HTTPSHandler")]
+pub async fn https_handler(
+    client_stream: &mut TcpStream,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let req_id = uuid::Uuid::new_v4();
+
+    tracing::info!("Received request ID {}", req_id);
+
+    // 1. Parse request
+    // read all buffer until double CRLF
+    let buffer = read_all_buffer(&mut *client_stream).await?;
+
+    tracing::debug!(
+        "Full received data for HTTPS request ID {}: {:?}",
+        req_id,
+        buffer.as_str()
     );
+
+    let lines = buffer.split("\r\n").collect::<Vec<&str>>();
+    let first_line = *lines.get(0).unwrap_or(&"");
+    let _header_lines = lines // Just for logging purposes
+        .iter()
+        .skip(1)
+        .take_while(|&&line| !line.is_empty())
+        .cloned()
+        .collect::<Vec<&str>>();
+
+    let [_method, _authority, _version] = first_line.split(' ').collect::<Vec<&str>>()[..] else {
+        tracing::error!("Malformed HTTPS request line: {}", first_line);
+        return Err("Malformed HTTPS request line".into());
+    };
+
+    tracing::debug!(
+        "Parsed HTTPS request ID {id}: method={method}, authority={authority}, version={version}, headers={header_lines:?}",
+        id = req_id,
+        method = _method,
+        authority = _authority,
+        version = _version,
+        header_lines = _header_lines,
+    );
+
+    // 2. Connect to destination server
+    let (host, port_str) = _authority.split_once(':').ok_or("Invalid authority")?;
+    let port: u16 = port_str.parse()?;
+
+    tracing::info!("Resolving DNS for {}", host);
+
+    // Resolve the host using the async DNS resolver
+    let lookup = DNS_RESOLVER.lookup_ip(host).await?;
+    let ip = lookup.iter().next().ok_or("No IP address found")?;
+
+    tracing::info!("Resolved {} to {}", host, ip);
+
+    // Connect directly to the resolved IP address
+    let addr = SocketAddr::new(ip, port);
+    let mut dest_stream =
+        TokioTime::timeout(Duration::from_secs(5), TcpStream::connect(addr)).await??;
+
+    tracing::info!("Connected to {}", addr);
+
+    // 3. Send back 200 Connection Established to the client
+    let client_response = format!("{} 200 Connection Established\r\n\r\n", _version);
+    client_stream.write_all(client_response.as_bytes()).await?;
+
+    // 4. Tunnel data between client and destination server
+    tracing::info!("Establishing HTTPS tunnel for request ID {}", req_id);
+
+    match tokio::io::copy_bidirectional(client_stream, &mut dest_stream).await {
+        Ok((client_to_server, server_to_client)) => {
+            tracing::info!(
+                bytes_up = client_to_server,
+                bytes_down = server_to_client,
+                "Closed HTTPS tunnel successfully for request ID {}",
+                req_id
+            );
+        }
+        Err(e) => {
+            tracing::error!(error = %e, error_kind = ?e.kind(), "Tunnel error for request ID {}", req_id);
+        }
+    }
+
+    Ok(())
 }
 
-async fn handler_http(
-    req_id: uuid::Uuid,
+#[tracing::instrument(level = "info", name = "HTTPHandler")]
+pub async fn http_handler(
     req: Request<body::Incoming>,
 ) -> Result<Response<Full<body::Bytes>>, Infallible> {
+    let req_id = uuid::Uuid::new_v4();
+    tracing::info!("Received request ID {}", req_id);
+
     let method = req.method().to_owned();
     let uri = req.uri().to_owned();
     let version = req.version();
     let headers = req.headers().to_owned();
     let body = req.collect().await.unwrap().to_bytes();
-    let scheme: &str = "http";
+    static SCHEME: &str = "http";
 
     let client_builder = reqwest::ClientBuilder::new();
     let client_builder = match version {
@@ -54,7 +132,7 @@ async fn handler_http(
 
     let url = format!(
         "{}://{}{}",
-        scheme,
+        SCHEME,
         uri.authority().unwrap(),
         uri.path_and_query().map(|pq| pq.as_str()).unwrap_or("/")
     );
@@ -117,49 +195,6 @@ async fn handler_http(
                 "Error: {}",
                 err
             )))))
-        }
-    }
-}
-
-#[tracing::instrument(level = "info", name = "HandlerRequest")]
-pub async fn handler_request(
-    req: Request<body::Incoming>,
-) -> Result<Response<Full<body::Bytes>>, Infallible> {
-    let req_id = uuid::Uuid::new_v4();
-
-    tracing::info!("Received request ID {}", req_id);
-
-    let uri = req.uri().to_owned();
-    // Try to get the port from the URI to identify the scheme (http or https), this is because
-    // the scheme is not always present in the URI.
-    let scheme = match uri.scheme_str() {
-        Some(scheme_str) => scheme_str,
-        None => {
-            let port = uri.port_u16();
-            tracing::warn!("URI scheme not found, inferring from port -- {:?}", port);
-
-            if port.unwrap_or(80) == 443 {
-                "https"
-            } else {
-                "http"
-            }
-        }
-    };
-
-    match scheme {
-        "http" => {
-            tracing::info!("Handling HTTP request ID {}", req_id);
-            handler_http(req_id, req).await
-        }
-        "https" => {
-            tracing::info!("Handling HTTPS request ID {}", req_id);
-            handler_https(req_id, req).await
-        }
-        _ => {
-            tracing::error!("Unsupported URI scheme: {}", scheme);
-            Ok(Response::new(Full::new(body::Bytes::from(
-                "Error: Unsupported URI scheme",
-            ))))
         }
     }
 }
