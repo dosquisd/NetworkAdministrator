@@ -44,7 +44,8 @@ pub async fn forward_http_request(
         "{}://{}{}",
         SCHEME,
         req_params.uri.authority().unwrap(),
-        req_params.uri
+        req_params
+            .uri
             .path_and_query()
             .map(|pq| pq.as_str())
             .unwrap_or("/")
@@ -73,7 +74,9 @@ pub async fn forward_http_request(
         url
     );
 
-    let request_builder = client.request(reqwest_method, url).headers(req_params.headers);
+    let request_builder = client
+        .request(reqwest_method, url)
+        .headers(req_params.headers);
     let request_builder = match req_params.body {
         None => request_builder,
         Some(body) => request_builder.body(body),

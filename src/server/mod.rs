@@ -43,11 +43,15 @@ pub async fn start_server(
                             // TODO: process_https_with_interception
                             tracing::warn!("TLS interception not yet implemented");
                             if let Err(e) = process_https_request(&mut stream).await {
-                                tracing::error!("Error processing HTTPS request (interception): {e}");
+                                tracing::error!(
+                                    "Error processing HTTPS request (interception): {e}"
+                                );
                             }
                         } else {
                             if let Err(e) = process_https_request(&mut stream).await {
-                                tracing::error!("Error processing HTTPS request (no interception): {e}");
+                                tracing::error!(
+                                    "Error processing HTTPS request (no interception): {e}"
+                                );
                             }
                         }
                     } else {
