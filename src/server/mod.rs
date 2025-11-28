@@ -6,6 +6,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 use hyper_util::server::conn::auto;
 use tokio::net::TcpListener;
 
+use crate::config::get_global_config;
 use crate::proxy::{process_http_request, process_https_request};
 
 #[tracing::instrument(level = "info", name = "Server")]
@@ -37,8 +38,17 @@ pub async fn start_server(
                     if buffer.starts_with(b"CONNECT") {
                         tracing::info!("Detected HTTPS connection from {}", peer_addr);
 
-                        if let Err(err) = process_https_request(&mut stream).await {
-                            tracing::error!("Error serving connection: {}", err);
+                        let config = get_global_config();
+                        if config.intercept_tls {
+                            // TODO: process_https_with_interception
+                            tracing::warn!("TLS interception not yet implemented");
+                            if let Err(e) = process_https_request(&mut stream).await {
+                                tracing::error!("Error processing HTTPS request (interception): {e}");
+                            }
+                        } else {
+                            if let Err(e) = process_https_request(&mut stream).await {
+                                tracing::error!("Error processing HTTPS request (no interception): {e}");
+                            }
                         }
                     } else {
                         tracing::info!("Detected HTTP connection from {}", peer_addr);

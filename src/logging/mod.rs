@@ -1,35 +1,81 @@
 use std::io;
-use tracing::Level;
+
 use tracing_appender::rolling::daily;
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
-pub fn configure_global_tracing(log_level: Option<Level>) {
-    let log_level = log_level.unwrap_or(Level::INFO);
+use crate::cli::{LogFormat, LogLevel};
 
-    let file_appender = daily("./logs", "network_administrator.log");
-    let (non_blocking_file, _guard) = tracing_appender::non_blocking(file_appender);
+pub struct LogConfig {
+    pub level: LogLevel,
+    pub format: LogFormat,
+    pub file_path: Option<String>,
+}
 
-    let filter = EnvFilter::from_default_env().add_directive(log_level.into());
+pub fn configure_global_tracing(config: LogConfig) {
+    let level = config.level.as_tracing_level();
+    let filter = EnvFilter::from_default_env().add_directive(level.into());
 
-    let file_layer = fmt::layer()
-        .with_thread_ids(true)
-        .with_line_number(false)
-        .with_file(true)
-        .with_ansi(false)
-        .with_writer(non_blocking_file);
+    let registry = tracing_subscriber::registry().with(filter);
 
-    let console_layer = fmt::layer()
-        .pretty()
-        .with_thread_ids(true)
-        .with_line_number(false)
-        .with_file(true)
-        .with_writer(io::stdout);
+    match config.format {
+        LogFormat::Pretty => {
+            let console_layer = fmt::layer()
+                .pretty()
+                .with_thread_ids(true)
+                .with_line_number(false)
+                .with_file(true)
+                .with_writer(io::stdout);
 
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(file_layer)
-        .with(console_layer)
-        .init();
+            if let Some(file_path) = config.file_path {
+                let file_appender = daily("./logs", file_path);
+                let (non_blocking_file, _guard) = tracing_appender::non_blocking(file_appender);
 
-    std::mem::forget(_guard);
+                let file_layer = fmt::layer()
+                    .with_thread_ids(true)
+                    .with_ansi(false)
+                    .with_writer(non_blocking_file);
+
+                registry.with(console_layer).with(file_layer).init();
+
+                std::mem::forget(_guard);
+            } else {
+                registry.with(console_layer).init();
+            }
+        }
+        LogFormat::Json => {
+            let console_layer = fmt::layer().json().with_writer(io::stdout);
+
+            if let Some(file_path) = config.file_path {
+                let file_appender = daily("./logs", file_path);
+                let (non_blocking_file, _guard) = tracing_appender::non_blocking(file_appender);
+
+                let file_layer = fmt::layer().json().with_writer(non_blocking_file);
+
+                registry.with(console_layer).with(file_layer).init();
+
+                std::mem::forget(_guard);
+            } else {
+                registry.with(console_layer).init();
+            }
+        }
+        LogFormat::Compact => {
+            let console_layer = fmt::layer().compact().with_writer(io::stdout);
+
+            if let Some(file_path) = config.file_path {
+                let file_appender = daily("./logs", file_path);
+                let (non_blocking_file, _guard) = tracing_appender::non_blocking(file_appender);
+
+                let file_layer = fmt::layer()
+                    .compact()
+                    .with_ansi(false)
+                    .with_writer(non_blocking_file);
+
+                registry.with(console_layer).with(file_layer).init();
+
+                std::mem::forget(_guard);
+            } else {
+                registry.with(console_layer).init();
+            }
+        }
+    }
 }
