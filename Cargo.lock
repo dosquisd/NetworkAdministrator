@@ -872,6 +872,7 @@ dependencies = [
 name = "network-administrator"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "clap",
  "futures-util",
  "http",

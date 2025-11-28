@@ -6,7 +6,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 use hyper_util::server::conn::auto;
 use tokio::net::TcpListener;
 
-use crate::server::services::{http_handler, https_handler};
+use crate::proxy::{process_http_request, process_https_request};
 
 #[tracing::instrument(level = "info", name = "Server")]
 pub async fn start_server(
@@ -37,7 +37,7 @@ pub async fn start_server(
                     if buffer.starts_with(b"CONNECT") {
                         tracing::info!("Detected HTTPS connection from {}", peer_addr);
 
-                        if let Err(err) = https_handler(&mut stream).await {
+                        if let Err(err) = process_https_request(&mut stream).await {
                             tracing::error!("Error serving connection: {}", err);
                         }
                     } else {
@@ -45,7 +45,7 @@ pub async fn start_server(
 
                         let io = TokioIo::new(stream);
                         if let Err(err) = auto::Builder::new(TokioExecutor::new())
-                            .serve_connection(io, service_fn(http_handler))
+                            .serve_connection(io, service_fn(process_http_request))
                             .await
                         {
                             tracing::error!("Error serving connection: {}", err);

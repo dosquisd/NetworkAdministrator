@@ -1,12 +1,5 @@
-use std::sync::LazyLock;
-
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::TcpStream;
-use trust_dns_resolver::TokioAsyncResolver;
-use trust_dns_resolver::config::{ResolverConfig, ResolverOpts};
-
-pub static DNS_RESOLVER: LazyLock<TokioAsyncResolver> =
-    LazyLock::new(|| TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default()));
 
 pub async fn read_all_buffer(
     stream: &mut TcpStream,
