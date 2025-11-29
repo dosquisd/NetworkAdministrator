@@ -9,3 +9,10 @@
 
 # Ignore logs directory
 logs/
+
+# Certificate files
+certs/
+*.crt
+*.key
+*.pem
+*.der
