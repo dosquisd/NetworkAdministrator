@@ -1,6 +1,6 @@
 use std::io;
 
-use tracing_appender::rolling::daily;
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::cli::{LogFormat, LogLevel};
@@ -27,7 +27,12 @@ pub fn configure_global_tracing(config: LogConfig) {
                 .with_writer(io::stdout);
 
             if let Some(file_path) = config.file_path {
-                let file_appender = daily("./logs", file_path);
+                let file_appender = RollingFileAppender::builder()
+                    .rotation(Rotation::DAILY)
+                    .filename_prefix(&file_path)
+                    .filename_suffix("log")
+                    .build("./logs")
+                    .expect("Failed to created rolling file appender");
                 let (non_blocking_file, _guard) = tracing_appender::non_blocking(file_appender);
 
                 let file_layer = fmt::layer()
@@ -46,7 +51,12 @@ pub fn configure_global_tracing(config: LogConfig) {
             let console_layer = fmt::layer().json().with_writer(io::stdout);
 
             if let Some(file_path) = config.file_path {
-                let file_appender = daily("./logs", file_path);
+                let file_appender = RollingFileAppender::builder()
+                    .rotation(Rotation::DAILY)
+                    .filename_prefix(&file_path)
+                    .filename_suffix("log")
+                    .build("./logs")
+                    .expect("Failed to created rolling file appender");
                 let (non_blocking_file, _guard) = tracing_appender::non_blocking(file_appender);
 
                 let file_layer = fmt::layer().json().with_writer(non_blocking_file);
@@ -62,7 +72,12 @@ pub fn configure_global_tracing(config: LogConfig) {
             let console_layer = fmt::layer().compact().with_writer(io::stdout);
 
             if let Some(file_path) = config.file_path {
-                let file_appender = daily("./logs", file_path);
+                let file_appender = RollingFileAppender::builder()
+                    .rotation(Rotation::DAILY)
+                    .filename_prefix(&file_path)
+                    .filename_suffix("log")
+                    .build("./logs")
+                    .expect("Failed to created rolling file appender");
                 let (non_blocking_file, _guard) = tracing_appender::non_blocking(file_appender);
 
                 let file_layer = fmt::layer()
