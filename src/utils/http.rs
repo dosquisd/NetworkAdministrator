@@ -231,6 +231,11 @@ pub async fn write_response(
 
     if let Some(body) = &response.body {
         // Remove Transfer-Encoding if present (we already decoded chunks)
+        tracing::trace!(
+            "Modifying response headers for Content-Length. Original headers: {:?}",
+            modified_headers
+        );
+
         modified_headers.remove("Transfer-Encoding");
         modified_headers.remove("Content-Encoding");
 

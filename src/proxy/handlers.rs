@@ -19,6 +19,7 @@ use crate::schemas::{HTTPRequestSchema, HTTPSRequestSchema};
 use crate::utils::{
     DNS_RESOLVER,
     ads::{analyze_and_modify_request, analyze_and_modify_response, inject_script, is_ad_request},
+    decoders::{decode_brotli, decode_deflate, decode_gzip, decode_zstd},
     http::{HttpResponse, read_http_stream, read_stream_response, write_request, write_response},
     read_headers_buffer,
     stream::parse_stream,
@@ -258,21 +259,81 @@ pub async fn process_https_request_with_interception(
                     body_size = http_response.body.as_ref().map_or(0, |b| b.len())
                 );
 
-                if let Some(encoding) = http_response.headers.get("Content-Encoding") {
-                    if encoding.contains("br") && http_response.body.is_some() {
-                        let compressed = http_response.body.as_ref().unwrap();
-                        let mut decompressed = Vec::new();
+                if let Some(encoding) = http_response.headers.get("Content-Encoding") && let Some(body) = http_response.body.as_ref() {
+                    let encodings: Vec<&str> = encoding.split(',')
+                        .map(|e| e.trim())
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .rev()
+                        .collect();
 
-                        brotli::BrotliDecompress(
-                            &mut &compressed[..],
-                            &mut decompressed
-                        )?;
+                    tracing::debug!(
+                        "Decoding chain for request ID {}: {:?}",
+                        req_id,
+                        encodings
+                    );
 
-                        tracing::debug!("Decompressed Brotli: {} → {} bytes",
-                            compressed.len(), decompressed.len());
+                    let mut body = body.clone();
+                    for enc in encodings {
+                        let original_size = body.len();
 
-                        http_response.body = Some(decompressed);
+                        body = match enc {
+                            "br" => {
+                                let decompressed = decode_brotli(&body[..])?;
+                                tracing::debug!(
+                                    "Decompressed Brotli: {} → {} bytes for request ID {}",
+                                    original_size,
+                                    decompressed.len(),
+                                    req_id
+                                );
+                                decompressed
+                            }
+                            "gzip" => {
+                                let decompressed = decode_gzip(&body[..])?;
+                                tracing::debug!(
+                                    "Decompressed gzip: {} → {} bytes for request ID {}",
+                                    original_size,
+                                    decompressed.len(),
+                                    req_id
+                                );
+                                decompressed
+                            }
+                            "deflate" => {
+                                let decompressed = decode_deflate(&body[..])?;
+                                tracing::debug!(
+                                    "Decompressed deflate: {} → {} bytes for request ID {}",
+                                    original_size,
+                                    decompressed.len(),
+                                    req_id
+                                );
+                                decompressed
+                            }
+                            "zstd" => {
+                                let decompressed = decode_zstd(&body)?;
+                                tracing::debug!(
+                                    "Decompressed zstd: {} → {} bytes for request ID {}",
+                                    original_size,
+                                    decompressed.len(),
+                                    req_id
+                                );
+                                decompressed
+                            }
+                            "identity" | "" => {
+                                // No encoding or identity (no-op)
+                                body
+                            }
+                            unknown => {
+                                tracing::warn!(
+                                    "Unknown encoding '{}' for request ID {}, skipping",
+                                    unknown,
+                                    req_id
+                                );
+                                body
+                            }
+                        };
                     }
+
+                    http_response.body = Some(body);
                 }
 
                 let mut modified_response = analyze_and_modify_response(&http_response);

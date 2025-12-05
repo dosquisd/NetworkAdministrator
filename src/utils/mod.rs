@@ -1,5 +1,6 @@
 pub mod ads;
 pub mod buffer;
+pub mod decoders;
 pub mod dns;
 pub mod http;
 pub mod stream;
