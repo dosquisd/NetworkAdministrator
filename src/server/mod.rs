@@ -7,7 +7,9 @@ use hyper_util::server::conn::auto;
 use tokio::net::TcpListener;
 
 use crate::config::get_global_config;
-use crate::proxy::{process_http_request, process_https_request};
+use crate::proxy::{
+    process_http_request, process_https_request, process_https_request_with_interception,
+};
 
 #[tracing::instrument(level = "info", name = "Server")]
 pub async fn start_server(
@@ -40,9 +42,9 @@ pub async fn start_server(
 
                         let config = get_global_config();
                         if config.intercept_tls {
-                            // TODO: process_https_with_interception
-                            tracing::warn!("TLS interception not yet implemented");
-                            if let Err(e) = process_https_request(&mut stream).await {
+                            if let Err(e) =
+                                process_https_request_with_interception(&mut stream).await
+                            {
                                 tracing::error!(
                                     "Error processing HTTPS request (interception): {e}"
                                 );

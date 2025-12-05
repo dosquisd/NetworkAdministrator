@@ -66,7 +66,7 @@ pub fn get_ca_cert() -> Result<String, Box<dyn std::error::Error + Send + Sync>>
     Ok(ca_cert)
 }
 
-fn get_ca_key() -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+pub fn get_ca_key() -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     let ca_key_path = CERT_PATH.join("ca_key.pem");
     let ca_key = fs::read_to_string(ca_key_path)?;
     Ok(ca_key)
