@@ -1,4 +1,3 @@
-use std::net::IpAddr;
 use std::net::SocketAddr;
 
 use hyper::service::service_fn;
@@ -10,6 +9,7 @@ use crate::config::get_global_config;
 use crate::proxy::{
     process_http_request, process_https_request, process_https_request_with_interception,
 };
+use crate::utils::DNS_RESOLVER;
 
 #[tracing::instrument(level = "info", name = "Server")]
 pub async fn start_server(
@@ -17,13 +17,22 @@ pub async fn start_server(
     port: u16,
     is_v4: Option<bool>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let config = get_global_config();
+
+    let lookup = DNS_RESOLVER.lookup_ip(host).await?;
     let ip = match is_v4 {
-        Some(false) => IpAddr::V6(host.parse()?),
-        _ => IpAddr::V4(host.parse()?),
+        Some(false) => lookup
+            .iter()
+            .find(|ip| ip.is_ipv6())
+            .ok_or("No IPv6 address found for the specified host")?,
+        _ => lookup
+            .iter()
+            .find(|ip| ip.is_ipv4())
+            .ok_or("No IPv4 address found for the specified host")?,
     };
 
     let addr = SocketAddr::new(ip, port);
-    tracing::info!("Starting server at http://{}", addr);
+    tracing::info!("Starting server at http://{} -- Config: {:?}", addr, config);
 
     let listener = TcpListener::bind(addr).await?;
 
@@ -40,7 +49,6 @@ pub async fn start_server(
                     if buffer.starts_with(b"CONNECT") {
                         tracing::info!("Detected HTTPS connection from {}", peer_addr);
 
-                        let config = get_global_config();
                         if config.intercept_tls {
                             if let Err(e) =
                                 process_https_request_with_interception(&mut stream).await
