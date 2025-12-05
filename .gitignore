@@ -1,11 +1,17 @@
 # Rust build files
 /target
 
+# Proxy files
+.proxy/*
+
 # ignore all hidden files and directories
 # unless explicitly whitelisted
 .*
 !.gitignore
 !.vscode/
+!.proxy/
+!.gitkeep
+!.proxy/*.example
 
 # Ignore logs directory
 logs/

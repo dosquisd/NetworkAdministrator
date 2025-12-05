@@ -1,0 +1,8 @@
+[blacklist]
+exact = ["ads.google.com", "doubleclick.net"]
+wildcard = ["*.googlesyndication.com"]
+regex = [".*/ads/.*"]
+
+[whitelist]
+exact = ["web.whatsapp.com"]
+wildcard = ["*.chase.com"]
