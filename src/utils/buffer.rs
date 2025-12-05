@@ -1,10 +1,12 @@
-use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::net::TcpStream;
+use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 
-pub async fn read_all_buffer(
-    stream: &mut TcpStream,
-) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-    let mut reader = BufReader::new(&mut *stream);
+pub async fn read_headers_buffer<S>(
+    stream: &mut S,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>>
+where
+    S: AsyncRead + Unpin,
+{
+    let mut reader = BufReader::new(stream);
     let mut buffer = String::new();
     let mut line_count = 0u16;
 
