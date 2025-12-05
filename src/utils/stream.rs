@@ -29,7 +29,7 @@ async fn read_and_consume_stream(
 
 async fn read_without_consuming_stream(
     stream: &mut TcpStream,
-    _all_buffer: bool,  // Unused for now
+    _all_buffer: bool, // Unused for now
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     let mut buffer = Vec::new();
     let mut peek_buffer = vec![0u8; 4096];
@@ -83,7 +83,7 @@ pub async fn read_stream(
 pub async fn parse_stream(
     stream: &mut TcpStream,
     consume_stream: bool,
-    all_buffer: bool
+    all_buffer: bool,
 ) -> Result<StreamParser, Box<dyn std::error::Error + Send + Sync>> {
     let buffer_string = read_stream(stream, consume_stream, all_buffer).await?;
 
