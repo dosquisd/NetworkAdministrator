@@ -1,3 +1,4 @@
+use crate::filters::is_domain_blacklisted;
 use super::http::{HttpRequest, HttpResponse};
 
 pub fn analyze_and_modify_request(req: &HttpRequest) -> HttpRequest {
@@ -5,12 +6,14 @@ pub fn analyze_and_modify_request(req: &HttpRequest) -> HttpRequest {
     req.clone()
 }
 
-pub fn is_ad_request(_req: &HttpRequest) -> bool {
-    // TODO: Implement ad detection logic here.
-    false
+/// Checks if the given HTTP request is an ad request based on its URI.
+pub fn is_ad_request(req: &HttpRequest) -> bool {
+    let host = req.uri.split(':').next().unwrap_or_default();
+    is_domain_blacklisted(host)
 }
 
 pub fn analyze_and_modify_response(resp: &HttpResponse) -> HttpResponse {
+    // TODO: Implement ad content removal logic here.
     resp.clone()
 }
 
