@@ -1,7 +1,13 @@
 use std::io;
 
+use time::macros::format_description;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
-use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{
+    EnvFilter,
+    fmt::{self, time::LocalTime},
+    layer::SubscriberExt,
+    util::SubscriberInitExt,
+};
 
 use crate::cli::{LogFormat, LogLevel};
 
@@ -12,8 +18,18 @@ pub struct LogConfig {
 }
 
 pub fn configure_global_tracing(config: LogConfig) {
+    let timer = LocalTime::new(format_description!(
+        "[year]-[month]-[day] [hour]:[minute]:[second]"
+    ));
+
     let level = config.level.as_tracing_level();
-    let filter = EnvFilter::from_default_env().add_directive(level.into());
+    let filter = EnvFilter::from_default_env()
+        .add_directive(format!("network_administrator={}", level).parse().unwrap())
+        .add_directive("trust_dns_proto=warn".parse().unwrap())
+        .add_directive("trust_dns_resolver=warn".parse().unwrap())
+        .add_directive("tokio=warn".parse().unwrap())
+        .add_directive("hyper=warn".parse().unwrap())
+        .add_directive("h2=warn".parse().unwrap());
 
     let registry = tracing_subscriber::registry().with(filter);
 
@@ -24,6 +40,7 @@ pub fn configure_global_tracing(config: LogConfig) {
                 .with_thread_ids(true)
                 .with_line_number(false)
                 .with_file(true)
+                .with_timer(timer.clone())
                 .with_writer(io::stdout);
 
             if let Some(file_path) = config.file_path {
@@ -38,6 +55,7 @@ pub fn configure_global_tracing(config: LogConfig) {
                 let file_layer = fmt::layer()
                     .with_thread_ids(true)
                     .with_ansi(false)
+                    .with_timer(timer.clone())
                     .with_writer(non_blocking_file);
 
                 registry.with(console_layer).with(file_layer).init();
@@ -48,7 +66,10 @@ pub fn configure_global_tracing(config: LogConfig) {
             }
         }
         LogFormat::Json => {
-            let console_layer = fmt::layer().json().with_writer(io::stdout);
+            let console_layer = fmt::layer()
+                .json()
+                .with_timer(timer.clone())
+                .with_writer(io::stdout);
 
             if let Some(file_path) = config.file_path {
                 let file_appender = RollingFileAppender::builder()
@@ -59,7 +80,10 @@ pub fn configure_global_tracing(config: LogConfig) {
                     .expect("Failed to created rolling file appender");
                 let (non_blocking_file, _guard) = tracing_appender::non_blocking(file_appender);
 
-                let file_layer = fmt::layer().json().with_writer(non_blocking_file);
+                let file_layer = fmt::layer()
+                    .json()
+                    .with_timer(timer.clone())
+                    .with_writer(non_blocking_file);
 
                 registry.with(console_layer).with(file_layer).init();
 
@@ -69,7 +93,10 @@ pub fn configure_global_tracing(config: LogConfig) {
             }
         }
         LogFormat::Compact => {
-            let console_layer = fmt::layer().compact().with_writer(io::stdout);
+            let console_layer = fmt::layer()
+                .compact()
+                .with_timer(timer.clone())
+                .with_writer(io::stdout);
 
             if let Some(file_path) = config.file_path {
                 let file_appender = RollingFileAppender::builder()
@@ -83,6 +110,7 @@ pub fn configure_global_tracing(config: LogConfig) {
                 let file_layer = fmt::layer()
                     .compact()
                     .with_ansi(false)
+                    .with_timer(timer.clone())
                     .with_writer(non_blocking_file);
 
                 registry.with(console_layer).with(file_layer).init();
