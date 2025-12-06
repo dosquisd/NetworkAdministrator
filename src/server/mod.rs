@@ -6,10 +6,14 @@ use hyper_util::server::conn::auto;
 use tokio::net::TcpListener;
 
 use crate::config::get_global_config;
+use crate::filters::is_domain_whitelisted;
 use crate::proxy::{
     process_http_request, process_https_request, process_https_request_with_interception,
 };
-use crate::utils::DNS_RESOLVER;
+use crate::utils::{
+    DNS_RESOLVER,
+    buffer::{parse_first_line_buffer, read_first_line_buffer},
+};
 
 #[tracing::instrument(level = "info", name = "Server")]
 pub async fn start_server(
@@ -49,7 +53,22 @@ pub async fn start_server(
                     if buffer.starts_with(b"CONNECT") {
                         tracing::info!("Detected HTTPS connection from {}", peer_addr);
 
-                        if config.intercept_tls {
+                        let first_line = read_first_line_buffer(buffer.as_ref())
+                            .await
+                            .unwrap_or_default();
+                        let (_, authority, _) =
+                            parse_first_line_buffer(first_line).unwrap_or_default();
+                        let host = authority.split(':').next().unwrap_or_default().to_string();
+                        let is_whitelisted = is_domain_whitelisted(&host);
+
+                        if is_whitelisted {
+                            tracing::info!(
+                                "The host {} is whitelisted, skipping interception",
+                                host
+                            );
+                        }
+
+                        if config.intercept_tls && !is_whitelisted {
                             if let Err(e) =
                                 process_https_request_with_interception(&mut stream).await
                             {
