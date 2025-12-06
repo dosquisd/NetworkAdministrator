@@ -7,26 +7,9 @@ use tokio::{
 use tokio_native_tls::TlsStream;
 
 use super::buffer::read_headers_buffer;
+use crate::schemas::{HttpsRequest, HttpsResponse};
 
-#[derive(Clone, Debug)]
-pub struct HttpRequest {
-    pub method: String,
-    pub version: String,
-    pub uri: String,
-    pub headers: HashMap<String, String>,
-    pub body: Option<String>,
-}
-
-#[derive(Clone, Debug)]
-pub struct HttpResponse {
-    pub version: String,
-    pub status_code: u16,
-    pub status_text: String,
-    pub headers: HashMap<String, String>,
-    pub body: Option<Vec<u8>>,
-}
-
-fn parse_headers(lines: &[&str]) -> HashMap<String, String> {
+pub fn parse_headers(lines: &[&str]) -> HashMap<String, String> {
     let mut headers = HashMap::new();
 
     // Maybe there's a more efficient way to do this, idk
@@ -41,7 +24,7 @@ fn parse_headers(lines: &[&str]) -> HashMap<String, String> {
 
 pub async fn read_http_stream(
     tls_stream: &mut TlsStream<&mut TcpStream>,
-) -> Result<HttpRequest, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<HttpsRequest, Box<dyn std::error::Error + Send + Sync>> {
     let buffer_string = read_headers_buffer(tls_stream).await?;
 
     let lines = buffer_string.split("\r\n").collect::<Vec<&str>>();
@@ -79,7 +62,7 @@ pub async fn read_http_stream(
         None
     };
 
-    Ok(HttpRequest {
+    Ok(HttpsRequest {
         method: method.to_string(),
         version: version.to_string(),
         uri: authority.to_string(),
@@ -90,7 +73,7 @@ pub async fn read_http_stream(
 
 pub async fn read_stream_response(
     tls_stream: &mut TlsStream<&mut TcpStream>,
-) -> Result<HttpResponse, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<HttpsResponse, Box<dyn std::error::Error + Send + Sync>> {
     let mut reader = BufReader::new(tls_stream);
 
     // Read status line
@@ -187,7 +170,7 @@ pub async fn read_stream_response(
         None
     };
 
-    Ok(HttpResponse {
+    Ok(HttpsResponse {
         version: version.to_string(),
         status_code: status_code.parse()?,
         status_text: status_text.to_string(),
@@ -198,7 +181,7 @@ pub async fn read_stream_response(
 
 pub async fn write_request(
     tls_stream: &mut TlsStream<&mut TcpStream>,
-    request: &HttpRequest,
+    request: &HttpsRequest,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut request_string = format!("{} {} {}\r\n", request.method, request.uri, request.version);
 
@@ -219,7 +202,7 @@ pub async fn write_request(
 
 pub async fn write_response(
     tls_stream: &mut TlsStream<&mut TcpStream>,
-    response: &HttpResponse,
+    response: &HttpsResponse,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut response_string = format!(
         "{} {} {}\r\n",

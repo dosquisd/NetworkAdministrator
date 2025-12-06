@@ -1,2 +1,5 @@
 pub mod request;
-pub use request::{HTTPRequestSchema, HTTPSRequestSchema};
+pub mod response;
+
+pub use request::{HttpRequest, HttpsRequest};
+pub use response::HttpsResponse;

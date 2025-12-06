@@ -1,10 +1,5 @@
-use std::convert::Infallible;
 use std::net::SocketAddr;
 
-use bytes::Bytes;
-use http::{Request, Response};
-use http_body_util::{BodyExt, Full};
-use hyper::body::Incoming;
 use tokio::{
     io::AsyncWriteExt,
     net::TcpStream,
@@ -13,45 +8,15 @@ use tokio::{
 use tokio_native_tls::TlsAcceptor;
 use uuid::Uuid;
 
-use crate::client::{forward_http_request, forward_https_request_no_tunnel, forward_https_request_tunnel};
-use crate::schemas::{HTTPRequestSchema, HTTPSRequestSchema};
+use crate::client::{forward_https_request_no_tunnel, forward_https_request_tunnel};
+use crate::schemas::HttpsRequest;
 use crate::utils::{
     DNS_RESOLVER,
     read_headers_buffer,
+    http::parse_headers,
     stream::parse_stream,
     tls::generate_cert_for_domain,
 };
-
-#[tracing::instrument(level = "info", name = "ProcessHTTPRequest")]
-pub async fn process_http_request(
-    req: Request<Incoming>,
-) -> Result<Response<Full<Bytes>>, Infallible> {
-    let req_id = Uuid::new_v4();
-    tracing::info!("Received request ID {}", req_id);
-
-    let method = req.method().to_owned().to_string();
-    let uri = req.uri().to_owned();
-    let version = req.version();
-    let headers = req.headers().to_owned();
-    let body = match req.collect().await.ok() {
-        Some(b) => b.to_bytes(),
-        None => Bytes::new(),
-    };
-
-    // Here should implement the logic to process the HTTP request,
-    // such as validate headers, methods, block ads, all that stuff that could be interesting!
-
-    let http_request_schema = HTTPRequestSchema::new(method, uri, version, headers, Some(body));
-    match forward_http_request(req_id, http_request_schema).await {
-        Ok(resp) => Ok(resp),
-        Err(e) => {
-            tracing::error!(error = %e, "Error forwarding HTTP request for request ID {}", req_id);
-            Ok(Response::new(Full::new(Bytes::from(
-                "Error forwarding HTTP request",
-            ))))
-        }
-    }
-}
 
 #[tracing::instrument(level = "info", name = "ProcessHTTPSRequest")]
 pub async fn process_https_request(
@@ -97,13 +62,13 @@ pub async fn process_https_request(
     // Here should implement the logic to process the HTTP request,
     // such as validate headers, methods, block ads, all that stuff that could be interesting!
 
-    let https_request_schema = HTTPSRequestSchema::new(
-        _method.to_string(),
-        _authority.to_string(),
-        _version.to_string(),
-        _header_lines.iter().map(|s| s.to_string()).collect(),
-        None,
-    );
+    let https_request_schema = HttpsRequest{
+        method: _method.to_string(),
+        uri: _authority.to_string(),
+        version: _version.to_string(),
+        headers: parse_headers(_header_lines.as_ref()),
+        body: None,
+    };
     match forward_https_request_tunnel(req_id, client_stream, https_request_schema).await {
         Ok(_) => Ok(()),
         Err(e) => {

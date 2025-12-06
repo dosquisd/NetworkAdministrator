@@ -1,5 +1,7 @@
+use std::collections::HashMap;
+
 #[derive(Debug, Clone)]
-pub struct HTTPRequestSchema {
+pub struct HttpRequest {
     pub method: String,
     pub uri: http::Uri,
     pub version: http::Version,
@@ -7,47 +9,12 @@ pub struct HTTPRequestSchema {
     pub body: Option<bytes::Bytes>,
 }
 
-impl HTTPRequestSchema {
-    pub fn new(
-        method: String,
-        uri: http::Uri,
-        version: http::Version,
-        headers: http::HeaderMap,
-        body: Option<bytes::Bytes>,
-    ) -> Self {
-        Self {
-            method,
-            uri,
-            version,
-            headers,
-            body,
-        }
-    }
-}
 
-#[derive(Debug, Clone)]
-pub struct HTTPSRequestSchema {
+#[derive(Clone, Debug)]
+pub struct HttpsRequest {
     pub method: String,
-    pub uri: String,
     pub version: String,
-    pub headers: Vec<String>,
-    pub body: Option<bytes::Bytes>,
-}
-
-impl HTTPSRequestSchema {
-    pub fn new(
-        method: String,
-        uri: String,
-        version: String,
-        headers: Vec<String>,
-        body: Option<bytes::Bytes>,
-    ) -> Self {
-        Self {
-            method,
-            uri,
-            version,
-            headers,
-            body,
-        }
-    }
+    pub uri: String,
+    pub headers: HashMap<String, String>,
+    pub body: Option<String>,
 }
