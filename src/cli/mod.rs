@@ -66,6 +66,10 @@ pub struct Cli {
     #[arg(long, default_value = "pretty", value_enum)]
     pub log_format: LogFormat,
 
+    // Administrative interface port (if not specified, admin interface is disabled)
+    #[arg(long, default_value = "8000")]
+    pub admin_port: u16,
+
     // Enable TLS interception (requires CA certificate installed)
     #[arg(long, default_value = "false")]
     pub intercept_tls: bool,

@@ -1,6 +1,8 @@
 use std::sync::{Arc, LazyLock, RwLock};
 
-#[derive(Debug, Clone)]
+use serde::{Serialize, Deserialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProxyConfig {
     pub intercept_tls: bool,
     pub block_ads: bool,

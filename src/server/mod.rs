@@ -16,13 +16,11 @@ use crate::utils::{
 };
 
 #[tracing::instrument(level = "info", name = "Server")]
-pub async fn start_server(
+pub async fn start_proxy_server(
     host: String,
     port: u16,
     is_v4: Option<bool>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let config = get_global_config();
-
     let lookup = DNS_RESOLVER.lookup_ip(host).await?;
     let ip = match is_v4 {
         Some(false) => lookup
@@ -36,7 +34,7 @@ pub async fn start_server(
     };
 
     let addr = SocketAddr::new(ip, port);
-    tracing::info!("Starting server at http://{} -- Config: {:?}", addr, config);
+    tracing::info!("Starting proxy server at http://{}", addr);
 
     let listener = TcpListener::bind(addr).await?;
 
@@ -46,8 +44,9 @@ pub async fn start_server(
         tracing::info!("Accepted connection from {}", peer_addr);
 
         tokio::task::spawn(async move {
-            let mut buffer = vec![0u8; 1024];
+            let config = get_global_config();
 
+            let mut buffer = vec![0u8; 1024];
             match stream.peek(&mut buffer).await {
                 Ok(n) if n > 0 => {
                     if buffer.starts_with(b"CONNECT") {

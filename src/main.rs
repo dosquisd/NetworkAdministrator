@@ -1,14 +1,20 @@
 use clap::Parser;
 
+use network_administrator::admin::start_admin_server;
 use network_administrator::cli::Cli;
 use network_administrator::config::{ProxyConfig, set_global_config};
 use network_administrator::logging::{LogConfig, configure_global_tracing};
-use network_administrator::server::start_server;
+use network_administrator::server::start_proxy_server;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Parse CLI arguments
     let cli = Cli::parse();
+
+    if (cli.admin_port == 0 || cli.port == 0) && cli.admin_port == cli.port {
+        eprintln!("Error: Admin port cannot be the same as the proxy server port.");
+        std::process::exit(1);
+    }
 
     // Configure logging based on CLI options
     let log_config = LogConfig {
@@ -71,7 +77,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let config = ProxyConfig::from_cli(&cli);
     set_global_config(config);
 
-    // Start the server
+    // Start servers
+    let host = cli.host;
     let is_v4 = if cli.ipv6 { Some(false) } else { None };
-    start_server(cli.host, cli.port, is_v4).await
+
+    let proxy_handle = tokio::spawn(start_proxy_server(host.clone(), cli.port, is_v4));
+    let admin_handle = tokio::spawn(start_admin_server(host, cli.admin_port, is_v4));
+
+    tokio::select! {
+        result = proxy_handle => {
+            if let Err(e) = result {
+                tracing::error!("Proxy server panicked: {:?}", e);
+            }
+        }
+        result = admin_handle => {
+            if let Err(e) = result {
+                tracing::error!("Admin server panicked: {:?}", e);
+            }
+        }
+    }
+
+    Ok(())
 }
