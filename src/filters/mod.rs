@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 static FILTER_PATH: &str = "./.proxy/filter.toml";
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 pub enum ListConfigType {
     Exact,
     Wildcard,
@@ -38,14 +39,14 @@ struct ListConfig {
 // Internal representation for efficient domain filtering
 #[derive(Clone, Debug)]
 struct DomainFilter {
-    blacklist_exact: HashSet<String>,
-    whitelist_exact: HashSet<String>,
+    pub blacklist_exact: HashSet<String>,
+    pub whitelist_exact: HashSet<String>,
 
-    blacklist_wildcards: Vec<String>,
-    whitelist_wildcards: Vec<String>,
+    pub blacklist_wildcards: Vec<String>,
+    pub whitelist_wildcards: Vec<String>,
 
-    blacklist_regex: Vec<Regex>,
-    whitelist_regex: Vec<Regex>,
+    pub blacklist_regex: Vec<Regex>,
+    pub whitelist_regex: Vec<Regex>,
 }
 
 impl DomainFilter {
@@ -84,11 +85,44 @@ impl DomainFilter {
         })
     }
 
+    fn dump_file(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let filter_config = FilterConfig {
+            blacklist: ListConfig {
+                exact: self.blacklist_exact.iter().cloned().collect(),
+                wildcard: self.blacklist_wildcards.clone(),
+                regex: self
+                    .blacklist_regex
+                    .iter()
+                    .map(|re| re.as_str().to_string())
+                    .collect(),
+            },
+            whitelist: ListConfig {
+                exact: self.whitelist_exact.iter().cloned().collect(),
+                wildcard: self.whitelist_wildcards.clone(),
+                regex: self
+                    .whitelist_regex
+                    .iter()
+                    .map(|re| re.as_str().to_string())
+                    .collect(),
+            },
+        };
+
+        let toml_str = toml::to_string(&filter_config)?;
+        std::fs::write(FILTER_PATH, toml_str)?;
+
+        Ok(())
+    }
+
     /// Add a domain to the specified list and dump the updated configuration to the TOML file.
     /// This operation is not meant to be used frequently, because the most common operation is read,
     /// then, this function is not optimized for perfomance right now, but it's a good idea to implement
     /// a more efficient way to handle frequent updates in the future.
-    fn add_domain(&mut self, domain: &str, list_type: ListConfigType, is_blacklisted: bool) {
+    pub fn add_domain(
+        &mut self,
+        domain: &str,
+        list_type: ListConfigType,
+        is_blacklisted: bool,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         match (list_type, is_blacklisted) {
             (ListConfigType::Exact, true) => {
                 self.blacklist_exact.insert(domain.to_string());
@@ -114,82 +148,79 @@ impl DomainFilter {
             }
         }
 
+        self.dump_file()
+    }
+
+    pub fn remove_domain(
+        &mut self,
+        domain: &str,
+        list_type: ListConfigType,
+        is_blacklisted: bool,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        match (list_type, is_blacklisted) {
+            (ListConfigType::Exact, true) => {
+                self.blacklist_exact.remove(domain);
+            }
+            (ListConfigType::Exact, false) => {
+                self.whitelist_exact.remove(domain);
+            }
+            (ListConfigType::Wildcard, true) => {
+                self.blacklist_wildcards.retain(|d| d != domain);
+            }
+            (ListConfigType::Wildcard, false) => {
+                self.whitelist_wildcards.retain(|d| d != domain);
+            }
+            (ListConfigType::Regex, true) => {
+                self.blacklist_regex.retain(|re| re.as_str() != domain);
+            }
+            (ListConfigType::Regex, false) => {
+                self.whitelist_regex.retain(|re| re.as_str() != domain);
+            }
+        }
+
         // Dump to TOML file
-        let filter_config = FilterConfig {
-            blacklist: ListConfig {
-                exact: self.blacklist_exact.iter().cloned().collect(),
-                wildcard: self.blacklist_wildcards.clone(),
-                regex: self
-                    .blacklist_regex
+        self.dump_file()
+    }
+
+    pub fn is_listed(&self, domain: &str, is_blacklisted: bool) -> bool {
+        match is_blacklisted {
+            true => {
+                if self.blacklist_exact.contains(domain) {
+                    return true;
+                }
+
+                if self
+                    .blacklist_wildcards
                     .iter()
-                    .map(|re| re.as_str().to_string())
-                    .collect(),
-            },
-            whitelist: ListConfig {
-                exact: self.whitelist_exact.iter().cloned().collect(),
-                wildcard: self.whitelist_wildcards.clone(),
-                regex: self
-                    .whitelist_regex
+                    .any(|wc| domain.ends_with(wc.trim_start_matches('*')))
+                {
+                    return true;
+                }
+
+                if self.blacklist_regex.iter().any(|re| re.is_match(domain)) {
+                    return true;
+                }
+            }
+            false => {
+                if self.whitelist_exact.contains(domain) {
+                    return true;
+                }
+
+                if self
+                    .whitelist_wildcards
                     .iter()
-                    .map(|re| re.as_str().to_string())
-                    .collect(),
-            },
-        };
+                    .any(|wc| domain.ends_with(wc.trim_start_matches('*')))
+                {
+                    return true;
+                }
 
-        let toml_str = toml::to_string(&filter_config).unwrap();
-        std::fs::write(FILTER_PATH, toml_str).unwrap();
-    }
-
-    pub fn add_domain_to_blacklist(&mut self, domain: &str, list_type: ListConfigType) {
-        self.add_domain(domain, list_type, true);
-    }
-
-    pub fn add_domain_to_whitelist(&mut self, domain: &str, list_type: ListConfigType) {
-        self.add_domain(domain, list_type, false);
-    }
-
-    fn is_listed(&self, domain: &str, is_blacklisted: bool) -> bool {
-        if self.whitelist_exact.contains(domain) {
-            return !is_blacklisted;
-        }
-
-        if self.blacklist_exact.contains(domain) {
-            return is_blacklisted;
-        }
-
-        if self
-            .whitelist_wildcards
-            .iter()
-            .any(|wc| domain.ends_with(wc.trim_start_matches('*')))
-        {
-            return !is_blacklisted;
-        }
-
-        if self
-            .blacklist_wildcards
-            .iter()
-            .any(|wc| domain.ends_with(wc.trim_start_matches('*')))
-        {
-            return is_blacklisted;
-        }
-
-        if self.whitelist_regex.iter().any(|re| re.is_match(domain)) {
-            return !is_blacklisted;
-        }
-
-        if self.blacklist_regex.iter().any(|re| re.is_match(domain)) {
-            return is_blacklisted;
+                if self.whitelist_regex.iter().any(|re| re.is_match(domain)) {
+                    return true;
+                }
+            }
         }
 
         false
-    }
-
-    pub fn is_blacklisted(&self, domain: &str) -> bool {
-        self.is_listed(domain, true)
-    }
-
-    pub fn is_whitelisted(&self, domain: &str) -> bool {
-        self.is_listed(domain, false)
     }
 }
 
@@ -200,23 +231,70 @@ static DOMAIN_FILTER: LazyLock<Arc<RwLock<DomainFilter>>> = LazyLock::new(|| {
     Arc::new(RwLock::new(filter))
 });
 
-pub fn add_domain_to_blacklist(domain: &str, list_type: ListConfigType) {
+pub fn add_domain_to_blacklist(
+    domain: &str,
+    list_type: ListConfigType,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut filter = DOMAIN_FILTER.write().unwrap();
-    filter.add_domain_to_blacklist(domain, list_type);
+    filter.add_domain(domain, list_type, true)
 }
 
-pub fn add_domain_to_whitelist(domain: &str, list_type: ListConfigType) {
+pub fn add_domain_to_whitelist(
+    domain: &str,
+    list_type: ListConfigType,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut filter = DOMAIN_FILTER.write().unwrap();
-    filter.add_domain_to_whitelist(domain, list_type);
+    filter.add_domain(domain, list_type, false)
 }
 
 pub fn is_domain_blacklisted(domain: &str) -> bool {
     let filter = DOMAIN_FILTER.read().unwrap();
-    filter.is_blacklisted(domain)
+    filter.is_listed(domain, true)
 }
 
 pub fn is_domain_whitelisted(domain: &str) -> bool {
     let filter = DOMAIN_FILTER.read().unwrap();
-    filter.is_whitelisted(domain)
+    filter.is_listed(domain, false)
 }
 
+pub fn remove_domain_from_blacklist(
+    domain: &str,
+    list_type: ListConfigType,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let mut filter = DOMAIN_FILTER.write().unwrap();
+    filter.remove_domain(domain, list_type, true)
+}
+
+pub fn remove_domain_from_whitelist(
+    domain: &str,
+    list_type: ListConfigType,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let mut filter = DOMAIN_FILTER.write().unwrap();
+    filter.remove_domain(domain, list_type, false)
+}
+
+pub fn get_blacklist(config_type: ListConfigType) -> Vec<String> {
+    let filter = DOMAIN_FILTER.read().unwrap();
+    match config_type {
+        ListConfigType::Exact => filter.blacklist_exact.iter().cloned().collect(),
+        ListConfigType::Wildcard => filter.blacklist_wildcards.clone(),
+        ListConfigType::Regex => filter
+            .blacklist_regex
+            .iter()
+            .map(|re| re.as_str().to_string())
+            .collect(),
+    }
+}
+
+pub fn get_whitelist(config_type: ListConfigType) -> Vec<String> {
+    let filter = DOMAIN_FILTER.read().unwrap();
+    match config_type {
+        ListConfigType::Exact => filter.whitelist_exact.iter().cloned().collect(),
+        ListConfigType::Wildcard => filter.whitelist_wildcards.clone(),
+        ListConfigType::Regex => filter
+            .whitelist_regex
+            .iter()
+            .map(|re| re.as_str().to_string())
+            .collect(),
+    }
+}
