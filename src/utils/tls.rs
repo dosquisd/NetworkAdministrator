@@ -9,7 +9,7 @@ use crate::config::{
     CERT_DAYS_VALID, CERT_PATH, ProxyConfig, get_global_config, set_global_config,
 };
 
-pub fn generate_ca() -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+pub fn generate_ca() -> Result<(String, String), Box<dyn std::error::Error + Send + Sync>> {
     tracing::info!("Generating new CA certificate at {:?}", CERT_PATH);
 
     let mut params = CertificateParams::new(vec!["localhost".to_string()])?;
@@ -25,13 +25,15 @@ pub fn generate_ca() -> Result<String, Box<dyn std::error::Error + Send + Sync>>
     // as a reminder: key_pair is a private key, and cert is the public certificate
     let key_pair = KeyPair::generate()?;
     let cert = params.self_signed(&key_pair)?;
+    let cert_pem = cert.pem();
+    let cert_key = key_pair.serialize_pem();
 
     // Save to disk
     fs::create_dir_all(CERT_PATH.as_os_str())?;
-    fs::write(CERT_PATH.join("ca_key.pem"), key_pair.serialize_pem())?;
-    fs::write(CERT_PATH.join("ca_cert.pem"), cert.pem())?;
+    fs::write(CERT_PATH.join("ca_key.pem"), cert_key.clone())?;
+    fs::write(CERT_PATH.join("ca_cert.pem"), cert_pem.clone())?;
 
-    Ok(cert.pem())
+    Ok((cert_pem, cert_key))
 }
 
 pub fn get_ca_cert() -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
