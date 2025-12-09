@@ -7,10 +7,6 @@ pub struct SniffCommand {
     #[arg(short, long, default_value = "eth0")]
     pub interface: String,
 
-    // Force sniffing even if permissions are not sufficient (ARP spoofing may be required)
-    #[arg(long, short = 'F', default_value_t = false)]
-    pub force: bool,
-
     // If it is not specified duration or count, the sniff will only take a snapshot of current traffic
 
     // Duration to sniff in seconds
