@@ -9,7 +9,7 @@ use tracing_subscriber::{
     util::SubscriberInitExt,
 };
 
-use crate::cli::{LogFormat, LogLevel};
+use crate::cli::types::{LogFormat, LogLevel};
 
 pub struct LogConfig {
     pub level: LogLevel,

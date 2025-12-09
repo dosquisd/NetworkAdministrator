@@ -10,7 +10,7 @@ pub struct ProxyConfig {
 }
 
 impl ProxyConfig {
-    pub fn from_cli(cli: &crate::cli::Cli) -> Self {
+    pub fn from_cli(cli: &crate::cli::ProxyCommand) -> Self {
         Self {
             intercept_tls: cli.intercept_tls,
             block_ads: cli.block_ads,
