@@ -7,4 +7,5 @@ pub mod logging;
 pub mod proxy;
 pub mod schemas;
 pub mod server;
+pub mod sniff;
 pub mod utils;

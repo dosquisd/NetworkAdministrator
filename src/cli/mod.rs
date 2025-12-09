@@ -1,7 +1,7 @@
 mod commands;
 pub mod types;
 
-pub use commands::ProxyCommand;
+pub use commands::{ProxyCommand, SniffCommand};
 
 use clap::{Parser, Subcommand};
 
@@ -21,4 +21,5 @@ pub struct Cli {
 #[derive(Subcommand, Debug)]
 pub enum Commands {
     Proxy(ProxyCommand),
+    Sniff(SniffCommand),
 }

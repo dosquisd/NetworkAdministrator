@@ -10,6 +10,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         Commands::Proxy(proxy_cmd) => {
             proxy_cmd.execute().await?;
         }
+        Commands::Sniff(sniff_cmd) => {
+            sniff_cmd.execute().await?;
+        }
     }
 
     Ok(())
