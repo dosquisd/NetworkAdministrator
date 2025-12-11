@@ -1,0 +1,11 @@
+- name: Enable IP Forwarding
+  hosts: servers
+  become: yes
+  tasks:
+  - name: Set net.ipv4.ip_forward to 1
+    ansible.posix.sysctl:
+      name: net.ipv4.ip_forward
+      value: "1"
+      state: present
+      reload: yes
+      sysctl_set: yes

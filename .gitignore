@@ -11,6 +11,7 @@
 !.vscode/
 !.proxy/
 !.gitkeep
+!.python-version
 !.proxy/*.example
 
 # Ignore logs directory
@@ -22,3 +23,6 @@ certs/
 *.key
 *.pem
 *.der
+
+# Inventory file for Ansible
+inventory.ini

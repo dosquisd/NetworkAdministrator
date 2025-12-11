@@ -1,0 +1,6 @@
+[servers]
+server ansible_host={{ server.ip }} ansible_user={{ server.user }}
+
+[all:vars]
+ansible_python_interpreter=/usr/bin/python3
+ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
