@@ -19,6 +19,7 @@ hyper = { version = "1.8.1", features = ["full"] }
 hyper-util = { version = "0.1.18", features = ["full"] }
 native-tls = "0.2.14"
 openssl = "0.10.75"
+pcap = "2.4.0"
 rcgen = { version = "0.14.5", features = ["pem"] }
 regex = "1.12.2"
 reqwest = { version = "0.12.24", features = ["json"] }

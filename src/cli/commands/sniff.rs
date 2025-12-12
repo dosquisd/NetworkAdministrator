@@ -1,11 +1,13 @@
 use clap::Parser;
 
+use crate::sniff::sniff_network;
+
 #[derive(Parser, Debug)]
 #[command(about = "Sniff network traffic and display summaries")]
 pub struct SniffCommand {
     // Network interface to sniff on
     #[arg(short, long, default_value = "eth0")]
-    pub interface: String,
+    pub iface: String,
 
     // If it is not specified duration or count, the sniff will only take a snapshot of current traffic
 
@@ -25,10 +27,15 @@ pub struct SniffCommand {
 
 impl SniffCommand {
     pub async fn execute(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        println!(
-            "Sniffing on interface: {}, duration: {:?}, count: {:?}",
-            self.interface, self.duration, self.count
-        );
-        todo!("Implement sniffing functionality here");
+        if self.duration.is_none() && self.count.is_none() {
+            println!("No duration or count specified, taking a snapshot of current traffic.");
+        }
+
+        sniff_network(
+            &self.iface,
+            self.duration,
+            self.count,
+            self.output_file.as_deref(),
+        )
     }
 }
