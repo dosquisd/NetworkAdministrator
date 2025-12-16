@@ -1,5 +1,5 @@
 pub mod proxy;
-pub mod sniff;
+pub mod scan;
 
 pub use proxy::ProxyCommand;
-pub use sniff::SniffCommand;
+pub use scan::ScanCommand;

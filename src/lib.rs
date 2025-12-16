@@ -5,7 +5,7 @@ pub mod config;
 pub mod filters;
 pub mod logging;
 pub mod proxy;
+pub mod scan;
 pub mod schemas;
 pub mod server;
-pub mod sniff;
 pub mod utils;
