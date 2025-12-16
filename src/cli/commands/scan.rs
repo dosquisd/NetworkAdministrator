@@ -26,10 +26,13 @@ pub struct ScanCommand {
 
     #[arg(short = 'v', long = "verbose", help = "Enable verbose output for debugging")]
     pub verbose: bool,
+
+    #[arg(short = 'j', long = "jobs", help = "Number of threads to use for scanning [default: number of CPU cores]")]
+    pub num_threads: Option<usize>,
 }
 
 impl ScanCommand {
     pub async fn execute(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        scan_network(&self.network_ip, &self.interface_name, self.timeout_secs, self.output_format, self.verbose)
+        scan_network(&self.network_ip, &self.interface_name, self.timeout_secs, self.output_format, self.verbose, self.num_threads)
     }
 }

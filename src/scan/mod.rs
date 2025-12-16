@@ -1,27 +1,14 @@
-// TODO: Implement parallel scanning for improved performance.
-
 mod arp;
-use arp::send_arp_request;
+mod utils;
 
-use std::collections::HashMap;
-use std::io::{self, Write};
-use std::path::PathBuf;
-use std::sync::LazyLock;
+use arp::send_arp_request;
+use utils::{KNOWN_MACS_PATH, configure_progress_bar, load_known_macs};
+
+use rayon::ThreadPoolBuilder;
+use rayon::prelude::*;
 
 use crate::cli::types::OutputFormat;
-use crate::config::constants::CONFIG_PATH;
-
-static KNOWN_MACS_PATH: LazyLock<PathBuf> = LazyLock::new(|| CONFIG_PATH.join("known_macs.json"));
-
-fn load_known_macs() -> HashMap<String, String> {
-    let path = KNOWN_MACS_PATH.clone();
-    if !path.exists() {
-        return HashMap::new();
-    }
-
-    let content = std::fs::read_to_string(path.clone()).unwrap_or_default();
-    serde_json::from_str(&content).unwrap_or_default()
-}
+use crate::schemas::ArpResponse;
 
 /// Scans a given IPv4 address and prints the result.
 /// The IP address should be in the following format: "xxx.xxx.xxx.xxx/x".
@@ -31,6 +18,7 @@ pub fn scan_network(
     timeout_secs: Option<f32>,
     output_format: OutputFormat,
     verbose: bool,
+    num_threads: Option<usize>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let timeout_secs = match timeout_secs {
         Some(timeout) => {
@@ -65,6 +53,7 @@ pub fn scan_network(
     let broadcast_address = network_address | !mask;
     let first_host = network_address + 1;
     let last_host = broadcast_address - 1;
+    let total_hosts = last_host - first_host + 1;
     let first_octet = octets[0];
 
     let first_second_octet = (first_host >> 16) & 0xFF;
@@ -85,8 +74,10 @@ pub fn scan_network(
         last_second_octet,
         last_third_octet,
         last_fourth_octet,
-        last_host - first_host + 1
+        total_hosts
     );
+
+    let pb = configure_progress_bar(total_hosts as u64);
 
     let all_combinations = (first_second_octet..=last_second_octet)
         .flat_map(|second| {
@@ -108,31 +99,46 @@ pub fn scan_network(
         println!("Loaded {} known MAC addresses.\n", known_macs.len());
     }
 
-    let mut arp_responses = Vec::new();
-    for target_ip in all_combinations {
-        if verbose {
-            print!("ARP request to {} ", target_ip);
-            io::stdout().flush()?;
-        }
+    let pool = ThreadPoolBuilder::new()
+        .num_threads(num_threads.unwrap_or_else(num_cpus::get))
+        .thread_name(|i| format!("arp-scanner-{}", i))
+        .build()?;
 
-        let arp_response = send_arp_request(target_ip.parse()?, interface_name, timeout_secs)?;
-        if let Some(mut response) = arp_response {
-            if verbose {
-                println!("[{}]", response.target_mac);
-            }
-
-            let known_name = known_macs.get(&response.target_mac);
-            if let Some(name) = known_name {
-                response.alias = Some(name.clone());
-            }
-
-            arp_responses.push(response);
-        } else {
-            if verbose {
-                println!("[host down]");
-            }
-        }
+    if verbose {
+        println!(
+            "Using {} threads for scanning.\n",
+            pool.current_num_threads()
+        );
     }
+
+    let arp_responses: Vec<ArpResponse> = pool.install(|| {
+        all_combinations
+            .par_iter()
+            .filter_map(|target_ip| {
+                pb.set_message(format!("ARP request to {}", target_ip));
+
+                let arp_response =
+                    send_arp_request(target_ip.parse().unwrap(), interface_name, timeout_secs);
+
+                pb.inc(1);
+
+                match arp_response {
+                    Ok(mut response_opt) => {
+                        if let Some(ref mut response) = response_opt {
+                            let known_name = known_macs.get(&response.target_mac);
+                            if let Some(name) = known_name {
+                                response.alias = Some(name.clone());
+                            }
+                        }
+                        response_opt
+                    }
+                    Err(_) => None,
+                }
+            })
+            .collect()
+    });
+
+    pb.finish_with_message("ARP scan completed.");
 
     if arp_responses.is_empty() {
         println!("No ARP responses received.");
