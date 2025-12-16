@@ -1,6 +1,7 @@
 use clap::Parser;
 
-use crate::scan::{ARP_TIMEOUT_SECS, scan_network};
+use crate::config::constants::ARP_TIMEOUT_SECS;
+use crate::scan::scan_network;
 
 #[derive(Parser, Debug)]
 #[command(about = "Scan network devices and display summary information")]
@@ -20,7 +21,7 @@ pub struct ScanCommand {
     pub output_file: Option<String>,
 
     #[arg(short = 't', long = "timeout", help = format!("Timeout in seconds for each ARP request [default: {}]", ARP_TIMEOUT_SECS))]
-    pub timeout_secs: Option<u64>,
+    pub timeout_secs: Option<f32>,
 }
 
 impl ScanCommand {

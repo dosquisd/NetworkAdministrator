@@ -17,5 +17,5 @@ pub struct ArpResponse {
     pub interface_name: String,
 
     /// The timeout duration in seconds for waiting for an ARP response.
-    pub timeout_secs: Option<u64>,
+    pub timeout_secs: Option<f32>,
 }

@@ -6,20 +6,16 @@ use pnet::packet::arp::{ArpHardwareTypes, ArpOperations, MutableArpPacket};
 use pnet::packet::ethernet::{EtherTypes, MutableEthernetPacket};
 use pnet::util::MacAddr;
 
-use super::constants::ARP_TIMEOUT_SECS;
-use super::dtypes::ArpResponse;
+use crate::config::constants::ARP_TIMEOUT_SECS;
+use crate::schemas::arp::ArpResponse;
 
 pub fn send_arp_request(
     target_ip: Ipv4Addr,
     interface_name: &str,
-    timeout_secs: Option<u64>,
+    timeout_secs: Option<f32>,
 ) -> Result<Option<ArpResponse>, Box<dyn std::error::Error + Send + Sync>> {
     let timeout_secs = timeout_secs.unwrap_or(ARP_TIMEOUT_SECS);
-
-    println!(
-        "Sending ARP request to IP: {:?} from interface: {} -- TIMEOUT: {}",
-        target_ip, interface_name, timeout_secs
-    );
+    let timeout_mili_secs = (timeout_secs * 1000.0) as u128;
 
     let interface_names_match = |iface: &NetworkInterface| iface.name == interface_name;
 
@@ -83,8 +79,7 @@ pub fn send_arp_request(
 
     let start_time = SystemTime::now();
     loop {
-        if SystemTime::now().duration_since(start_time)?.as_secs() >= timeout_secs {
-            println!("ARP request timed out after {} seconds", timeout_secs);
+        if SystemTime::now().duration_since(start_time)?.as_millis() >= timeout_mili_secs {
             return Ok(None);
         }
 

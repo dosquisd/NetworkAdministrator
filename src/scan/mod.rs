@@ -4,20 +4,27 @@
 // 3. Implement a way to save and load known MAC addresses to show vendor info.
 
 mod arp;
-mod constants;
-mod dtypes;
 use arp::send_arp_request;
-
-pub use constants::ARP_TIMEOUT_SECS;
 
 /// Scans a given IPv4 address and prints the result.
 /// The IP address should be in the following format: "xxx.xxx.xxx.xxx/x".
 pub fn scan_network(
     network_address_v4: &str,
     interface_name: &str,
-    timeout_secs: Option<u64>,
+    timeout_secs: Option<f32>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("Scanning IP address: {}", network_address_v4);
+
+    let timeout_secs = match timeout_secs {
+        Some(timeout) => {
+            if timeout > 0.0 {
+                Some(timeout)
+            } else {
+                None
+            }
+        }
+        None => None
+    };
 
     let parts: Vec<&str> = network_address_v4.split('/').collect();
     if parts.len() != 2 {
@@ -41,6 +48,7 @@ pub fn scan_network(
     let broadcast_address = network_address | !mask;
     let first_host = network_address + 1;
     let last_host = broadcast_address - 1;
+    let first_octet = octets[0];
 
     let first_second_octet = (first_host >> 16) & 0xFF;
     let first_third_octet = (first_host >> 8) & 0xFF;
@@ -52,18 +60,17 @@ pub fn scan_network(
 
     println!(
         "Scanning from {}.{}.{}.{} to {}.{}.{}.{} -> Total Hosts: {}\n",
-        octets[0],
+        first_octet,
         first_second_octet,
         first_third_octet,
         first_fourth_octet,
-        octets[0],
+        first_octet,
         last_second_octet,
         last_third_octet,
         last_fourth_octet,
         last_host - first_host + 1
     );
 
-    let first_octet = octets[0];
     let all_combinations = (first_second_octet..=last_second_octet)
         .flat_map(|second| {
             (first_third_octet..=last_third_octet).flat_map(move |third| {
@@ -75,9 +82,13 @@ pub fn scan_network(
 
     let mut arp_responses = Vec::new();
     for target_ip in all_combinations {
+        println!("Sending ARP request to {}", target_ip);
         let arp_response = send_arp_request(target_ip.parse()?, interface_name, timeout_secs)?;
         if let Some(response) = arp_response {
+            println!("Received ARP response from {}: {}", response.target_ip, response.target_mac);
             arp_responses.push(response);
+        } else {
+            println!("No response from {}", target_ip);
         }
     }
 
