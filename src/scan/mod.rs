@@ -1,10 +1,12 @@
 // TODO:
 // 1. Implement parallel scanning for improved performance.
 // 2. Add output file option to save scan results (json, csv, txt)
-// 3. Implement a way to save and load known MAC addresses to show vendor info.
+// 3. Implement a way to save and load known MAC addresses to identify a device.
 
 mod arp;
 use arp::send_arp_request;
+
+use crate::cli::types::OutputFormat;
 
 /// Scans a given IPv4 address and prints the result.
 /// The IP address should be in the following format: "xxx.xxx.xxx.xxx/x".
@@ -12,9 +14,9 @@ pub fn scan_network(
     network_address_v4: &str,
     interface_name: &str,
     timeout_secs: Option<f32>,
+    output_format: OutputFormat,
+    verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    println!("Scanning IP address: {}", network_address_v4);
-
     let timeout_secs = match timeout_secs {
         Some(timeout) => {
             if timeout > 0.0 {
@@ -23,7 +25,7 @@ pub fn scan_network(
                 None
             }
         }
-        None => None
+        None => None,
     };
 
     let parts: Vec<&str> = network_address_v4.split('/').collect();
@@ -82,13 +84,23 @@ pub fn scan_network(
 
     let mut arp_responses = Vec::new();
     for target_ip in all_combinations {
-        println!("Sending ARP request to {}", target_ip);
+        if verbose {
+            println!("Sending ARP request to {}", target_ip);
+        }
+
         let arp_response = send_arp_request(target_ip.parse()?, interface_name, timeout_secs)?;
         if let Some(response) = arp_response {
-            println!("Received ARP response from {}: {}", response.target_ip, response.target_mac);
+            if verbose {
+                println!(
+                    "Received ARP response from {}: {}",
+                    response.target_ip, response.target_mac
+                );
+            }
             arp_responses.push(response);
         } else {
-            println!("No response from {}", target_ip);
+            if verbose {
+                println!("No response from {}", target_ip);
+            }
         }
     }
 
@@ -97,10 +109,14 @@ pub fn scan_network(
         return Ok(());
     }
 
-    println!("Received ARP responses from the following hosts:");
-    for response in arp_responses {
-        println!("IP: {}, MAC: {}", response.target_ip, response.target_mac);
+    if verbose {
+        println!(
+            "Displaying results in {} format:",
+            output_format.to_string()
+        );
     }
+
+    output_format.show_scanning_results(&arp_responses);
 
     Ok(())
 }

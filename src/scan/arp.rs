@@ -42,6 +42,14 @@ pub fn send_arp_request(
         _ => return Err("Sender IP is not IPv4".into()),
     };
 
+    if sender_ip == target_ip {
+        return Ok(Some(ArpResponse {
+            target_ip: sender_ip.to_string(),
+            target_mac: sender_mac.to_string(),
+            alias: Some("Self".to_string()),
+        }));
+    }
+
     let target_mac = MacAddr::broadcast();
 
     // 1. create arp buffer
@@ -89,18 +97,10 @@ pub fn send_arp_request(
                     if arp_reply.get_operation() == ArpOperations::Reply
                         && arp_reply.get_sender_proto_addr() == target_ip
                     {
-                        println!(
-                            "Received ARP reply from IP: {:?}, MAC: {:?}",
-                            arp_reply.get_sender_proto_addr(),
-                            arp_reply.get_sender_hw_addr()
-                        );
                         return Ok(Some(ArpResponse {
                             target_ip: arp_reply.get_sender_proto_addr().to_string(),
                             target_mac: arp_reply.get_sender_hw_addr().to_string(),
-                            sender_ip: arp_reply.get_target_proto_addr().to_string(),
-                            sender_mac: arp_reply.get_target_hw_addr().to_string(),
-                            interface_name: interface_name.to_string(),
-                            timeout_secs: Some(timeout_secs),
+                            alias: None,
                         }));
                     }
                 }

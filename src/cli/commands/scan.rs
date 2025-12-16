@@ -1,5 +1,6 @@
 use clap::Parser;
 
+use crate::cli::types::OutputFormat;
 use crate::config::constants::ARP_TIMEOUT_SECS;
 use crate::scan::scan_network;
 
@@ -17,15 +18,18 @@ pub struct ScanCommand {
     )]
     pub interface_name: String,
 
-    #[arg(short = 'o', long, help = "Output file to save raw captured data")]
-    pub output_file: Option<String>,
+    #[arg(short = 'o', long = "output", default_value_t = OutputFormat::Txt, value_enum, help = "Output format to show raw captured data")]
+    pub output_format: OutputFormat,
 
     #[arg(short = 't', long = "timeout", help = format!("Timeout in seconds for each ARP request [default: {}]", ARP_TIMEOUT_SECS))]
     pub timeout_secs: Option<f32>,
+
+    #[arg(short = 'v', long = "verbose", help = "Enable verbose output for debugging")]
+    pub verbose: bool,
 }
 
 impl ScanCommand {
     pub async fn execute(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        scan_network(&self.network_ip, &self.interface_name, self.timeout_secs)
+        scan_network(&self.network_ip, &self.interface_name, self.timeout_secs, self.output_format, self.verbose)
     }
 }
