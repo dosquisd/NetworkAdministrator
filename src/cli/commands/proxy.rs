@@ -9,48 +9,66 @@ use crate::{
 };
 
 #[derive(Parser, Debug)]
-#[command(
-    about = "Start the HTTP/HTTPS proxy server",
-)]
+#[command(about = "Start the HTTP/HTTPS proxy server")]
 pub struct ProxyCommand {
-    // Host address to bind the proxy server
-    #[arg(short = 'H', long, default_value = "127.0.0.1")]
+    #[arg(
+        short = 'H',
+        long,
+        default_value = "127.0.0.1",
+        help = "Host address to bind the proxy server"
+    )]
     pub host: String,
 
-    // Port number to bind the proxy server
-    #[arg(short = 'p', long, default_value = "8080")]
+    #[arg(
+        short = 'p',
+        long,
+        default_value = "8080",
+        help = "Port number to bind the proxy server"
+    )]
     pub port: u16,
 
-    // Force IPv6 usage
-    #[arg(long, default_value = "false")]
+    #[arg(long, default_value = "false", help = "Force IPv6 usage")]
     pub ipv6: bool,
 
-    // Logging level
-    #[arg(short, long, default_value = "info", value_enum)]
+    #[arg(
+        short,
+        long,
+        default_value = "info",
+        value_enum,
+        help = "Logging level"
+    )]
     pub log_level: LogLevel,
 
-    // Path to log file (if not specified, logs go to stdout)
-    #[arg(long)]
+    #[arg(long, help = "Path to log file (if not specified, logs go to stdout)")]
     pub log_file: Option<String>,
 
-    // Log output format
-    #[arg(long, default_value = "pretty", value_enum)]
+    #[arg(long, default_value = "pretty", value_enum, help = "Log output format")]
     pub log_format: LogFormat,
 
-    // Administrative interface port (if not specified, admin interface is disabled)
-    #[arg(long, default_value = "8000")]
+    #[arg(
+        long,
+        help = "Maximum number of log files to retain (only applies if log_file is set)"
+    )]
+    pub log_max_files: Option<usize>,
+
+    #[arg(long, default_value = "8000", help = "Administrative interface port")]
     pub admin_port: u16,
 
-    // Enable TLS interception (requires CA certificate installed)
-    #[arg(long, default_value = "false")]
+    #[arg(
+        long,
+        default_value = "false",
+        help = "Enable TLS interception (requires CA certificate installed)"
+    )]
     pub intercept_tls: bool,
 
-    // Enable ad blocking (blocks known ad/tracker domains)
-    #[arg(long, default_value = "false")]
+    #[arg(
+        long,
+        default_value = "false",
+        help = "Enable ad blocking (blocks known ad/tracker domains)"
+    )]
     pub block_ads: bool,
 
-    // Enable response caching
-    #[arg(long, default_value = "false")]
+    #[arg(long, default_value = "false", help = "Enable response caching")]
     pub cache_enabled: bool,
 }
 
@@ -66,6 +84,7 @@ impl ProxyCommand {
             level: self.log_level,
             format: self.log_format,
             file_path: self.log_file.clone(),
+            max_log_files: self.log_max_files,
         };
 
         configure_global_tracing(log_config);
