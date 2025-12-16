@@ -10,7 +10,9 @@ use std::{
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-static FILTER_PATH: &str = "./.proxy/filter.toml";
+use crate::config::constants::CONFIG_PATH;
+
+static FILTER_PATH: LazyLock<PathBuf> = LazyLock::new(|| CONFIG_PATH.join("filter.toml"));
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 pub enum ListConfigType {
@@ -51,9 +53,7 @@ struct DomainFilter {
 
 impl DomainFilter {
     pub fn load() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let path = PathBuf::from(FILTER_PATH);
-
-        let content = std::fs::read_to_string(path)?;
+        let content = std::fs::read_to_string(FILTER_PATH.clone())?;
         let config: FilterConfig = toml::from_str(&content)?;
 
         let blacklist_exact: HashSet<String> = config.blacklist.exact.into_iter().collect();
@@ -108,7 +108,7 @@ impl DomainFilter {
         };
 
         let toml_str = toml::to_string(&filter_config)?;
-        std::fs::write(FILTER_PATH, toml_str)?;
+        std::fs::write(FILTER_PATH.clone(), toml_str)?;
 
         Ok(())
     }

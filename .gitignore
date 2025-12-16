@@ -2,17 +2,17 @@
 /target
 
 # Proxy files
-.proxy/*
+.config/*
 
 # ignore all hidden files and directories
 # unless explicitly whitelisted
 .*
 !.gitignore
 !.vscode/
-!.proxy/
+!.config/
 !.gitkeep
 !.python-version
-!.proxy/*.example
+!.config/*.example
 
 # Ignore logs directory
 logs/

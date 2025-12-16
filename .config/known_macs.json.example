@@ -1,0 +1,5 @@
+{
+    "ff:ff:ff:ff:ff:ff": "Broadcast",
+    "00:00:00:00:00:00": "Zero"
+    // Add more known macs here
+}

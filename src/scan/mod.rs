@@ -1,12 +1,27 @@
-// TODO:
-// 1. Implement parallel scanning for improved performance.
-// 2. Add output file option to save scan results (json, csv, txt)
-// 3. Implement a way to save and load known MAC addresses to identify a device.
+// TODO: Implement parallel scanning for improved performance.
 
 mod arp;
 use arp::send_arp_request;
 
+use std::collections::HashMap;
+use std::io::{self, Write};
+use std::path::PathBuf;
+use std::sync::LazyLock;
+
 use crate::cli::types::OutputFormat;
+use crate::config::constants::CONFIG_PATH;
+
+static KNOWN_MACS_PATH: LazyLock<PathBuf> = LazyLock::new(|| CONFIG_PATH.join("known_macs.json"));
+
+fn load_known_macs() -> HashMap<String, String> {
+    let path = KNOWN_MACS_PATH.clone();
+    if !path.exists() {
+        return HashMap::new();
+    }
+
+    let content = std::fs::read_to_string(path.clone()).unwrap_or_default();
+    serde_json::from_str(&content).unwrap_or_default()
+}
 
 /// Scans a given IPv4 address and prints the result.
 /// The IP address should be in the following format: "xxx.xxx.xxx.xxx/x".
@@ -82,24 +97,39 @@ pub fn scan_network(
         })
         .collect::<Vec<String>>();
 
+    if verbose {
+        println!(
+            "Loading known MAC addresses from {:?}",
+            KNOWN_MACS_PATH.clone()
+        );
+    }
+    let known_macs = load_known_macs();
+    if verbose {
+        println!("Loaded {} known MAC addresses.\n", known_macs.len());
+    }
+
     let mut arp_responses = Vec::new();
     for target_ip in all_combinations {
         if verbose {
-            println!("Sending ARP request to {}", target_ip);
+            print!("ARP request to {} ", target_ip);
+            io::stdout().flush()?;
         }
 
         let arp_response = send_arp_request(target_ip.parse()?, interface_name, timeout_secs)?;
-        if let Some(response) = arp_response {
+        if let Some(mut response) = arp_response {
             if verbose {
-                println!(
-                    "Received ARP response from {}: {}",
-                    response.target_ip, response.target_mac
-                );
+                println!("[{}]", response.target_mac);
             }
+
+            let known_name = known_macs.get(&response.target_mac);
+            if let Some(name) = known_name {
+                response.alias = Some(name.clone());
+            }
+
             arp_responses.push(response);
         } else {
             if verbose {
-                println!("No response from {}", target_ip);
+                println!("[host down]");
             }
         }
     }
@@ -111,7 +141,7 @@ pub fn scan_network(
 
     if verbose {
         println!(
-            "Displaying results in {} format:",
+            "\nDisplaying results in {} format:",
             output_format.to_string()
         );
     }
