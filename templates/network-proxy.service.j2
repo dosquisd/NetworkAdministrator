@@ -1,0 +1,14 @@
+[Unit]
+Description=Network Administrator Proxy Service
+After=network.target
+
+[Service]
+Type=simple
+User={{ ansible_user }}
+WorkingDirectory=/home/{{ ansible_user }}/NetworkAdministrator
+ExecStart=/home/{{ ansible_user }}/NetworkAdministrator/target/release/network-administrator proxy --host 0.0.0.0 --port 8080 --log-file /home/{{ ansible_user }}/NetworkAdministrator/logs/proxy.log --log-level trace
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,23 @@
+- name: Update Local Git Repository
+  hosts: servers
+  tasks:
+  - name: Ensure the local git repository is up to date
+    ansible.builtin.git:
+      repo: 'git@github.com:dosquisd/NetworkAdministrator.git'
+      dest: '/home/{{ ansible_user }}/NetworkAdministrator'
+      version: 'main'
+      update: yes
+
+  - name: Build release version of NetworkAdministrator
+    ansible.builtin.shell: |
+      source $HOME/.cargo/env
+      cd /home/{{ ansible_user }}/NetworkAdministrator
+      cargo build --release
+    args:
+      executable: /bin/bash
+
+  - name: Restart proxy service
+    become: yes
+    ansible.builtin.systemd:
+      name: network-proxy
+      state: restarted
