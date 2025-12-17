@@ -7,12 +7,16 @@ use hyper::body::Incoming;
 use uuid::Uuid;
 
 use crate::client::forward_http_request;
+use crate::config::get_global_config;
+use crate::filters::is_domain_blacklisted;
 use crate::schemas::HttpRequest;
 
 #[tracing::instrument(level = "info", name = "ProcessHTTPRequest")]
 pub async fn process_http_request(
     req: Request<Incoming>,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
+    let config = get_global_config();
+
     let req_id = Uuid::new_v4();
     tracing::info!("Received request ID {}", req_id);
 
@@ -25,8 +29,18 @@ pub async fn process_http_request(
         None => Bytes::new(),
     };
 
-    // Here should implement the logic to process the HTTP request,
-    // such as validate headers, methods, block ads, all that stuff that could be interesting!
+    if config.block_ads {
+        let host = headers
+            .get("host")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or_default();
+        if is_domain_blacklisted(host) {
+            tracing::info!("The host {} is blacklisted, returning 403 Forbidden", host);
+            let mut forbidden_response = Response::new(Full::new(Bytes::from("403 Forbidden")));
+            *forbidden_response.status_mut() = http::StatusCode::FORBIDDEN;
+            return Ok(forbidden_response);
+        }
+    }
 
     let http_request_schema = HttpRequest {
         method,

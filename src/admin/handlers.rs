@@ -184,6 +184,17 @@ pub async fn remove_from_list_handler(query: Query<ListQuery>) -> Result<StatusC
         }
     }
 
+    tracing::info!(
+        "Removing '{}' from {} (type: {:?})",
+        text,
+        if query.is_blacklist {
+            "blacklist"
+        } else {
+            "whitelist"
+        },
+        query.config_type
+    );
+
     match query.is_blacklist {
         true => remove_domain_from_blacklist(&text, query.config_type)
             .map(|_| StatusCode::OK)

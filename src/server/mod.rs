@@ -6,7 +6,7 @@ use hyper_util::server::conn::auto;
 use tokio::net::TcpListener;
 
 use crate::config::get_global_config;
-use crate::filters::is_domain_whitelisted;
+use crate::filters::{is_domain_whitelisted, is_domain_blacklisted};
 use crate::proxy::{
     process_http_request, process_https_request, process_https_request_with_interception,
 };
@@ -65,6 +65,11 @@ pub async fn start_proxy_server(
                                 "The host {} is whitelisted, skipping interception",
                                 host
                             );
+                        }
+
+                        if config.block_ads && is_domain_blacklisted(&host) {
+                            tracing::info!("The host {} is blacklisted, closing connection", host);
+                            return;
                         }
 
                         if config.intercept_tls && !is_whitelisted {

@@ -12,7 +12,7 @@ use crate::config::get_global_config;
 use crate::schemas::{HttpsRequest, HttpsResponse};
 use crate::utils::DNS_RESOLVER;
 use crate::utils::{
-    ads::{analyze_and_modify_request, analyze_and_modify_response, inject_script, is_ad_request},
+    ads::{analyze_and_modify_request, analyze_and_modify_response, inject_script, is_ad_request_based_on_uri},
     decoders::{decode_brotli, decode_deflate, decode_gzip, decode_zstd},
     http::{read_http_stream, read_stream_response, write_request, write_response},
 };
@@ -91,7 +91,7 @@ pub async fn forward_https_request_no_tunnel(
                     let modified_request = match config.block_ads {
                         true => {
                             let request = analyze_and_modify_request(&http_request);
-                            if is_ad_request(&request) {
+                            if is_ad_request_based_on_uri(&request.uri) {
                                 tracing::info!("Blocking ad request for request ID {}", req_id);
 
                                 let response = HttpsResponse {

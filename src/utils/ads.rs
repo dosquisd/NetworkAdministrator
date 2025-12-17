@@ -7,8 +7,8 @@ pub fn analyze_and_modify_request(req: &HttpsRequest) -> HttpsRequest {
 }
 
 /// Checks if the given HTTP request is an ad request based on its URI.
-pub fn is_ad_request(req: &HttpsRequest) -> bool {
-    let host = req.uri.split(':').next().unwrap_or_default();
+pub fn is_ad_request_based_on_uri(uri: &str) -> bool {
+    let host = uri.split(':').next().unwrap_or_default();
     is_domain_blacklisted(host)
 }
 
