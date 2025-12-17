@@ -1,7 +1,6 @@
 use serde::Serialize;
 
 /// Represents the response received from an ARP request.
-#[allow(dead_code)]
 #[derive(Serialize, Debug, Clone)]
 pub struct ArpResponse {
     /// The target IP address that was queried.

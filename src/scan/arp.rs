@@ -1,19 +1,22 @@
 use std::net::{IpAddr, Ipv4Addr};
-use std::time::SystemTime;
+use std::thread;
+use std::time::{Duration, SystemTime};
 
 use pnet::datalink::{self, Channel, Config, NetworkInterface};
 use pnet::packet::arp::{ArpHardwareTypes, ArpOperations, MutableArpPacket};
 use pnet::packet::ethernet::{EtherTypes, MutableEthernetPacket};
 use pnet::util::MacAddr;
 
-use crate::config::constants::ARP_TIMEOUT_SECS;
+use crate::config::constants::{ARP_REQUEST_INTERVAL_MSECS, ARP_RETRIES, ARP_TIMEOUT_SECS};
 use crate::schemas::arp::ArpResponse;
 
 pub fn send_arp_request(
     target_ip: Ipv4Addr,
     interface_name: &str,
     timeout_secs: Option<f32>,
+    retries: Option<usize>,
 ) -> Result<Option<ArpResponse>, Box<dyn std::error::Error + Send + Sync>> {
+    let retries = retries.unwrap_or(ARP_RETRIES);
     let timeout_secs = timeout_secs.unwrap_or(ARP_TIMEOUT_SECS);
     let timeout_mili_secs = (timeout_secs * 1000.0) as u128;
 
@@ -68,7 +71,7 @@ pub fn send_arp_request(
     arp_packet.set_target_proto_addr(target_ip);
 
     // 2. create ethernet frame
-    let mut ethernet_buffer = [0u8; 14 + 42]; // 14 bytes for Ethernet header + 42 bytes for ARP packet 
+    let mut ethernet_buffer = [0u8; 14 + 28]; // 14 bytes for Ethernet header + 28 bytes for ARP packet 
     let mut ethernet_packet =
         MutableEthernetPacket::new(&mut ethernet_buffer).ok_or("Error creating Ethernet Packet")?;
 
@@ -82,8 +85,15 @@ pub fn send_arp_request(
         Channel::Ethernet(tx, rx) => (tx, rx),
         _ => return Err("Error creating datalink channel".into()),
     };
-    tx.send_to(&ethernet_buffer, None)
-        .ok_or("Failed to send packet")??;
+
+    for i in 0..retries {
+        tx.send_to(&ethernet_buffer, None)
+            .ok_or("Failed to send packet")??;
+
+        if i < retries - 1 {
+            thread::sleep(Duration::from_millis(ARP_REQUEST_INTERVAL_MSECS));
+        }
+    }
 
     let start_time = SystemTime::now();
     loop {

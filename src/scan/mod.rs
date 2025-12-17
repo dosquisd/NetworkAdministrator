@@ -19,6 +19,7 @@ pub fn scan_network(
     output_format: OutputFormat,
     verbose: bool,
     num_threads: Option<usize>,
+    retries: Option<usize>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let timeout_secs = match timeout_secs {
         Some(timeout) => {
@@ -118,7 +119,7 @@ pub fn scan_network(
                 pb.set_message(format!("ARP request to {}", target_ip));
 
                 let arp_response =
-                    send_arp_request(target_ip.parse().unwrap(), interface_name, timeout_secs);
+                    send_arp_request(target_ip.parse().unwrap(), interface_name, timeout_secs, retries);
 
                 pb.inc(1);
 

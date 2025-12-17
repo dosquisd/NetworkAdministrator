@@ -2,7 +2,9 @@ use std::path::Path;
 use std::sync::LazyLock;
 
 // ARP configuration
-pub const ARP_TIMEOUT_SECS: f32 = 5.0;
+pub const ARP_TIMEOUT_SECS: f32 = 1.0;
+pub const ARP_RETRIES: usize = 4;
+pub const ARP_REQUEST_INTERVAL_MSECS: u64 = 50;
 
 // Configuration paths
 pub const CONFIG_PATH: LazyLock<&'static Path> = LazyLock::new(|| Path::new("./.config"));
