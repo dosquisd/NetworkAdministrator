@@ -2,8 +2,13 @@ use clap::Parser;
 
 use crate::{
     admin::start_admin_server,
+    cache::{CacheConfig, set_global_cache},
     cli::types::{LogFormat, LogLevel},
-    config::{ProxyConfig, set_global_config},
+    config::{
+        ProxyConfig,
+        constants::{CACHE_CAPACITY_MB, CACHE_CLEANUP_INTERVAL_SECS},
+        set_global_config,
+    },
     logging::{LogConfig, configure_global_tracing},
     server::start_proxy_server,
 };
@@ -70,6 +75,23 @@ pub struct ProxyCommand {
 
     #[arg(long, default_value = "false", help = "Enable response caching")]
     pub cache_enabled: bool,
+
+    #[arg(long,
+        help = format!(
+            "Cache capacity in megabytes [default: {} MB]. Only applies if cache is enabled",
+            CACHE_CAPACITY_MB
+        )
+    )]
+    pub cache_capacity_mb: Option<usize>,
+
+    #[arg(
+        long,
+        help = format!(
+            "Cache cleanup interval in seconds [default: {} seconds]. Only applies if cache is enabled",
+            CACHE_CLEANUP_INTERVAL_SECS
+        )
+    )]
+    pub cache_cleanup_interval_secs: Option<u64>,
 }
 
 impl ProxyCommand {
@@ -137,9 +159,17 @@ impl ProxyCommand {
         );
         println!("");
 
-        // Set global configuration
+        // Set global configurations for proxy and cache
         let config = ProxyConfig::from_cli(self);
         set_global_config(config);
+
+        let cache_config = CacheConfig {
+            capacity_mb: self.cache_capacity_mb.unwrap_or(CACHE_CAPACITY_MB),
+            cleanup_interval_secs: self
+                .cache_cleanup_interval_secs
+                .unwrap_or(CACHE_CLEANUP_INTERVAL_SECS),
+        };
+        set_global_cache(cache_config);
 
         // Start servers
         let host = self.host.clone();
