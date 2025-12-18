@@ -8,10 +8,13 @@ use tokio::{
     time::{self as TokioTime, Duration},
 };
 
-use crate::config::settings::{ProxyConfig, get_global_config, set_global_config};
+use crate::config::{
+    constants::CONFIG_PATH,
+    settings::{ProxyConfig, get_global_config, set_global_config},
+};
 use crate::filters::{
     ListConfigType, add_domain_to_blacklist, add_domain_to_whitelist, get_blacklist, get_whitelist,
-    remove_domain_from_blacklist, remove_domain_from_whitelist,
+    merge_from_file, remove_domain_from_blacklist, remove_domain_from_whitelist, replace_from_file,
 };
 
 // ============================================================
@@ -208,5 +211,37 @@ pub async fn remove_from_list_handler(query: Query<ListQuery>) -> Result<StatusC
                 tracing::error!("Failed to remove of blacklist: {}", e);
                 StatusCode::INTERNAL_SERVER_ERROR
             }),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct UpdateAdListQuery {
+    pub hard: Option<bool>,
+}
+
+pub async fn update_ad_list_handler(
+    Query(query): Query<UpdateAdListQuery>,
+) -> Result<StatusCode, StatusCode> {
+    tracing::info!("Updating ad list...");
+
+    let updated_filter_path = CONFIG_PATH.join("filter.updated.toml");
+
+    let result = if query.hard.unwrap_or(false) {
+        tracing::info!("Performing hard update (replace)");
+        replace_from_file(updated_filter_path)
+    } else {
+        tracing::info!("Performing soft update (merge)");
+        merge_from_file(updated_filter_path)
+    };
+
+    match result {
+        Ok(_) => {
+            tracing::info!("Ad list updated successfully");
+            Ok(StatusCode::OK)
+        }
+        Err(e) => {
+            tracing::error!("Failed to update ad list: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
     }
 }
