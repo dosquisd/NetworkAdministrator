@@ -1,4 +1,5 @@
 pub mod admin;
+pub mod ads;
 pub mod cli;
 pub mod client;
 pub mod config;
