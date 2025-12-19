@@ -7,7 +7,7 @@ use pnet::packet::arp::{ArpHardwareTypes, ArpOperations, MutableArpPacket};
 use pnet::packet::ethernet::{EtherTypes, MutableEthernetPacket};
 use pnet::util::MacAddr;
 
-use crate::config::constants::{ARP_REQUEST_INTERVAL_MSECS, ARP_RETRIES, ARP_TIMEOUT_SECS};
+use crate::config::{ARP_REQUEST_INTERVAL_MSECS, ARP_RETRIES, ARP_TIMEOUT_SECS};
 use crate::schemas::arp::ArpResponse;
 
 pub fn send_arp_request(

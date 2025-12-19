@@ -1,7 +1,7 @@
 use clap::Parser;
 
 use crate::cli::types::OutputFormat;
-use crate::config::constants::{ARP_RETRIES, ARP_TIMEOUT_SECS};
+use crate::config::{ARP_RETRIES, ARP_TIMEOUT_SECS};
 use crate::scan::scan_network;
 
 #[derive(Parser, Debug)]

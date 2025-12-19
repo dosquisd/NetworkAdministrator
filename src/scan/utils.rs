@@ -2,7 +2,7 @@ use std::{collections::HashMap, path::PathBuf, sync::LazyLock};
 
 use indicatif::{ProgressBar, ProgressStyle};
 
-use crate::config::constants::CONFIG_PATH;
+use crate::config::CONFIG_PATH;
 
 pub static KNOWN_MACS_PATH: LazyLock<PathBuf> =
     LazyLock::new(|| CONFIG_PATH.join("known_macs.json"));
