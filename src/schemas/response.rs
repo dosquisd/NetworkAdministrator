@@ -52,15 +52,15 @@ impl Response {
         }
     }
 
-    pub fn set_body(&mut self, body: Vec<u8>) {
+    pub fn set_body(&mut self, body: &[u8]) {
         match self {
-            Response::Http(req) => req.body = Some(body),
-            Response::Https(req) => req.body = Some(body),
+            Response::Http(req) => req.body = Some(body.to_vec()),
+            Response::Https(req) => req.body = Some(body.to_vec()),
         }
     }
 
     pub fn set_body_str(&mut self, body: &str) {
-        self.set_body(body.as_bytes().to_vec());
+        self.set_body(&body.as_bytes().to_vec());
     }
 }
 
