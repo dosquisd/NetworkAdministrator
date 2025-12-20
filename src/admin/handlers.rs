@@ -266,5 +266,16 @@ pub async fn is_domain_in(
         false => is_domain_whitelisted(&domain),
     };
 
+    tracing::info!(
+        "Domain '{}' is {}in the {}",
+        domain,
+        if found { "" } else { "not " },
+        if query.is_blacklist {
+            "blacklist"
+        } else {
+            "whitelist"
+        }
+    );
+
     Json(IsDomainInResponse { found })
 }
