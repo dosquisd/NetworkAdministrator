@@ -91,7 +91,7 @@ pub async fn forward_https_request_no_tunnel(
                     let config = get_global_config();
                     let modified_request = match config.block_ads {
                         true => {
-                            let request = analyze_and_modify_request(&http_request);
+                            let request: HttpsRequest = analyze_and_modify_request(&http_request.into()).into();
                             let host = request.uri.split(':').next().unwrap_or_default();
                             if is_domain_blacklisted(host) {
                                 tracing::info!("Blocking ad request for request ID {}", req_id);
@@ -209,7 +209,7 @@ pub async fn forward_https_request_no_tunnel(
                     http_response.body = Some(body);
                 }
 
-                let mut modified_response = analyze_and_modify_response(&http_response);
+                let mut modified_response: HttpsResponse = analyze_and_modify_response(&http_response.into()).into();
 
                 let content_type = modified_response.headers.get("Content-Type");
                 if let Some(ct) = content_type && ct.contains("text/html") {
