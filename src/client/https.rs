@@ -8,7 +8,7 @@ use tokio::{
 use tokio_native_tls::TlsStream;
 use uuid::Uuid;
 
-use crate::ads::{analyze_and_modify_request, analyze_and_modify_response, inject_script};
+use crate::ads::{analyze_and_modify_request, analyze_and_modify_response};
 use crate::config::get_global_config;
 use crate::filters::is_domain_blacklisted;
 use crate::schemas::{HttpsRequest, HttpsResponse};
@@ -209,31 +209,30 @@ pub async fn forward_https_request_no_tunnel(
                     http_response.body = Some(body);
                 }
 
-                let mut modified_response: HttpsResponse = analyze_and_modify_response(&http_response.into()).into();
-
+                let config = get_global_config();
+                let mut modified_response = http_response.clone();
                 let content_type = modified_response.headers.get("Content-Type");
                 if let Some(ct) = content_type && ct.contains("text/html") {
-                    // Just for demonstration, we inject a simple script
                     let body = modified_response.body.clone().unwrap_or_default();
 
+                    // Determine charset for proper decoding
                     let charset = ct.split("charset=")
                     .nth(1)
                     .and_then(|c| c.split(';').next())
                     .unwrap_or("utf-8");
 
                     let body_text = if charset.to_lowercase() == "iso-8859-1" {
-                        // Decodificar ISO-8859-1
                         body.iter().map(|&b| b as char).collect::<String>()
                     } else {
-                            String::from_utf8_lossy(body.as_ref()).to_string()
+                        String::from_utf8_lossy(body.as_ref()).to_string()
                     };
 
-                    let modified_body = inject_script(
-                        &body_text,
-                        "console.log('Injected script by Network Administrator');",
-                    );
-
-                    modified_response.body = Some(modified_body.as_bytes().to_vec());
+                    modified_response.body = Some(body_text.as_bytes().to_vec());
+                    modified_response = if config.block_ads {
+                        analyze_and_modify_response(&modified_response.into()).into()
+                    } else {
+                        modified_response
+                    };
                 }
 
                 write_response(client_tls_stream, &modified_response).await?;
