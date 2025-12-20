@@ -4,6 +4,7 @@ pub mod routes;
 use std::net::SocketAddr;
 
 use axum::Router;
+use tower_http::cors::{CorsLayer, Any};
 use tokio::net::TcpListener;
 
 use crate::utils::DNS_RESOLVER;
@@ -15,10 +16,16 @@ pub async fn start_admin_server(
     port: u16,
     is_v4: Option<bool>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let cors = CorsLayer::new()
+        .allow_methods(Any)
+        .allow_origin(Any)
+        .allow_headers(Any);
+
     let app = Router::new()
         .merge(create_config_routes())
         .merge(create_health_routes())
-        .merge(create_list_routes());
+        .merge(create_list_routes())
+        .layer(cors);
 
     let lookup = DNS_RESOLVER.lookup_ip(host).await?;
     let ip = match is_v4 {
