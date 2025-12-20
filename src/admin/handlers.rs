@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Json, Query},
+    extract::{Json, Path, Query},
     http::StatusCode,
 };
 use serde::{Deserialize, Serialize};
@@ -14,7 +14,8 @@ use crate::config::{
 };
 use crate::filters::{
     ListConfigType, add_domain_to_blacklist, add_domain_to_whitelist, get_blacklist, get_whitelist,
-    merge_from_file, remove_domain_from_blacklist, remove_domain_from_whitelist, replace_from_file,
+    is_domain_blacklisted, is_domain_whitelisted, merge_from_file, remove_domain_from_blacklist,
+    remove_domain_from_whitelist, replace_from_file,
 };
 
 // ============================================================
@@ -244,4 +245,26 @@ pub async fn update_ad_list_handler(
             Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
+}
+
+#[derive(Deserialize)]
+pub struct IsDomainInQuery {
+    pub is_blacklist: bool,
+}
+
+#[derive(Serialize)]
+pub struct IsDomainInResponse {
+    pub found: bool,
+}
+
+pub async fn is_domain_in(
+    Path(domain): Path<String>,
+    Query(query): Query<IsDomainInQuery>,
+) -> Json<IsDomainInResponse> {
+    let found = match query.is_blacklist {
+        true => is_domain_blacklisted(&domain),
+        false => is_domain_whitelisted(&domain),
+    };
+
+    Json(IsDomainInResponse { found })
 }
