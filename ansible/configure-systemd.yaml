@@ -8,6 +8,12 @@
       dest: /etc/systemd/system/network-proxy.service
       mode: 644
 
+  - name: Create systemd service for Pi-hole
+    ansible.builtin.template:
+      src: ../templates/pi-hole.service.j2
+      dest: /etc/systemd/system/pi-hole.service
+      mode: 644
+
   - name: Reload systemd to apply new service file
     ansible.builtin.systemd:
       daemon_reload: yes
@@ -15,5 +21,11 @@
   - name: Enable and start proxy service
     ansible.builtin.systemd:
       name: network-proxy
+      enabled: yes
+      state: started
+
+  - name: Enable and start Pi-hole service
+    ansible.builtin.systemd:
+      name: pi-hole
       enabled: yes
       state: started

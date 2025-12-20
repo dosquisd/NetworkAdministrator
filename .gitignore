@@ -12,7 +12,7 @@
 !.config/
 !.gitkeep
 !.python-version
-!.config/*.example
+!*.example
 
 # Ignore logs directory
 logs/

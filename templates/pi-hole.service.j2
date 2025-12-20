@@ -1,0 +1,19 @@
+[Unit]
+Description=Run Pi-hole Service
+After=network.target docker.service
+Requires=docker.service
+BindsTo=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User={{ ansible_user }}
+WorkingDirectory=/home/{{ ansible_user }}/NetworkAdministrator
+ExecStart=/home/{{ ansible_user }}/NetworkAdministrator/scripts/run-pi-hole.sh
+ExecStop=/usr/bin/docker stop pihole
+ExecStopPost=/usr/bin/docker rm pihole
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
