@@ -1,0 +1,16 @@
+#!/usr/sbin/nft -f
+
+table ip homebrew_nat {
+    chain postrouting {
+        type nat hook postrouting priority srcnat; policy accept;
+        oifname "{{ wan_interface }}" ip saddr {{ lan_cidr }} masquerade
+    }
+}
+
+table inet homebrew_filter {
+  chain forward {
+    type filter hook forward priority -5; policy accept;
+    ct state established,related accept
+    iifname "{{ lan_interface }}" oifname "{{ wan_interface }}" ip saddr {{ lan_cidr }} accept
+  }
+}

@@ -1,5 +1,5 @@
 [servers]
-server ansible_host={{ server.ip }} ansible_user={{ server.user }}
+server ansible_host={{ server.ip }} ansible_user={{ server.user }} wan_interface={{ server.wan_interface }} lan_interface={{ server.lan_interface }} lan_cidr={{ server.lan_cidr }}
 
 [all:vars]
 ansible_python_interpreter=/usr/bin/python3

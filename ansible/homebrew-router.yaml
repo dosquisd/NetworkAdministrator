@@ -1,0 +1,60 @@
+- name: Enable IP Forwarding
+  hosts: servers
+  become: yes
+  tasks:
+  - name: Set net.ipv4.ip_forward to 1
+    ansible.posix.sysctl:
+      name: net.ipv4.ip_forward
+      value: "1"
+      state: present
+      reload: yes
+      sysctl_set: yes
+
+- name: Configure nftables
+  hosts: servers
+  become: yes
+  tasks:
+  - name: Install nftables package
+    ansible.builtin.package:
+      name: nftables
+      state: present
+
+  - name: Deploy nftables configuration
+    ansible.builtin.template:
+      src: ../templates/nftables.conf.j2
+      dest: /etc/nftables.conf
+      mode: '0644'
+      validate: 'nft -c -f %s'
+    notify: Reload nftables
+
+  - name: Ensure nftables service is started and enabled
+    ansible.builtin.systemd:
+      name: nftables
+      state: started
+      enabled: true
+
+  handlers:
+  - name: Reload nftables
+    ansible.builtin.systemd:
+      name: nftables
+      state: reloaded
+
+# Used for DHCP and DNS services
+# but, the dns server could be disabled to use pihole's dns server instead
+- name: Configure dnsmasq
+  hosts: servers
+  become: yes
+  tasks:
+  - name: Install dnsmasq package
+    ansible.builtin.package:
+      name: dnsmasq
+      state: present
+
+- name: Configure hostapd
+  hosts: servers
+  become: yes
+  tasks:
+  - name: Install hostapd package
+    ansible.builtin.package:
+      name: hostapd
+      state: present
