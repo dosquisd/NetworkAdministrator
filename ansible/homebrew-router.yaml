@@ -10,6 +10,27 @@
       reload: yes
       sysctl_set: yes
 
+- name: Configure LAN interface to use the new LAN CIDR
+  hosts: servers
+  become: yes
+  tasks:
+  - name: Delete the previous DHCP client configuration for the LAN interface
+    ansible.builtin.shell: nmcli connection delete {{ lan_interface }} || true
+    changed_when: false
+
+  - name: Create a new connection for the LAN interface with a static IP
+    ansible.builtin.shell: |
+      nmcli connection add type ethernet con-name {{ lan_interface }}-static \
+        ifname {{ lan_interface }} ipv4.method manual \
+        ipv4.addresses "{{ lan_cidr_gateway }}/{{ lan_cidr_netmask }}"
+
+  - name: Bring up the LAN interface
+    ansible.builtin.shell: nmcli connection up {{ lan_interface }}-static
+
+  - name: Ensure the LAN interface is configured with the correct IP address
+    ansible.builtin.shell: ip addr show {{ lan_interface }} | grep -q "{{ lan_cidr_gateway }}"
+    changed_when: false
+
 - name: Configure nftables
   hosts: servers
   become: yes
