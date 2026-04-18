@@ -60,16 +60,28 @@
       name: nftables
       state: reloaded
 
-# Used for DHCP and DNS services
-# but, the dns server could be disabled to use pihole's dns server instead
-- name: Configure dnsmasq
+- name: Configure DHCP server
   hosts: servers
   become: yes
   tasks:
-  - name: Install dnsmasq package
+  - name: Install isc-dhcp-server package
     ansible.builtin.package:
-      name: dnsmasq
+      name: isc-dhcp-server
       state: present
+
+  - name: Deploy DHCP server configuration
+    ansible.builtin.template:
+      src: ../templates/dhcpd.conf.j2
+      dest: /etc/dhcp/dhcpd.conf
+      mode: '0644'
+      validate: 'dhcpd -t -cf %s'
+    notify: Reload DHCP server
+
+  handlers:
+  - name: Reload DHCP server
+    ansible.builtin.systemd:
+      name: isc-dhcp-server
+      state: reloaded
 
 - name: Configure hostapd
   hosts: servers

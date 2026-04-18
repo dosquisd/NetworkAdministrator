@@ -1,5 +1,5 @@
 [servers]
-server ansible_host={{ server.ip }} ansible_user={{ server.user }} wan_interface={{ server.wan_interface }} lan_interface={{ server.lan_interface }} lan_cidr={{ server.lan_cidr }}
+server ansible_host={{ server.ip }} ansible_user={{ server.user }} wan_interface={{ server.wan_interface }} lan_interface={{ server.lan_interface }} lan_cidr={{ server.lan_cidr }} lan={{ server.lan }} lan_cidr_gateway={{ server.lan_cidr_gateway }} lan_cidr_broadcast={{ server.lan_cidr_broadcast }} lan_cidr_netmask={{ server.lan_cidr_netmask }} lan_cidr_start={{ server.lan_cidr_start }} lan_cidr_end={{ server.lan_cidr_end }}
 
 [all:vars]
 ansible_python_interpreter=/usr/bin/python3

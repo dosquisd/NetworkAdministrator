@@ -1,0 +1,11 @@
+default-lease-time 600;
+max-lease-time 7200;
+authoritative;
+
+subnet {{ lan }} netmask {{ lan_cidr_netmask }} {
+    range {{ lan_cidr_start }} {{ lan_cidr_end }};
+        option routers             {{ lan_cidr_gateway }};
+        option domain-name-servers {{ lan_cidr_gateway }};
+        option subnet-mask         {{ lan_cidr_netmask }};
+        option broadcast-address   {{ lan_cidr_broadcast }};
+}
