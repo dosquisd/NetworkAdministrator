@@ -14,18 +14,46 @@
   hosts: servers
   become: yes
   tasks:
-  - name: Delete the previous DHCP client configuration for the LAN interface
-    ansible.builtin.shell: nmcli connection delete {{ lan_interface }} || true
+  - name: Stop NetworkManager from managing the LAN interface
+    ansible.builtin.command: nmcli device set {{ lan_interface }} managed no
     changed_when: false
 
-  - name: Create a new connection for the LAN interface with a static IP
-    ansible.builtin.shell: |
-      nmcli connection add type ethernet con-name {{ lan_interface }}-static \
-        ifname {{ lan_interface }} ipv4.method manual \
-        ipv4.addresses "{{ lan_cidr_gateway }}/{{ lan_cidr_netmask }}"
+  - name: Ensure LAN interface is up
+    ansible.builtin.command: ip link set {{ lan_interface }} up
+    changed_when: false
 
-  - name: Bring up the LAN interface
-    ansible.builtin.shell: nmcli connection up {{ lan_interface }}-static
+  - name: Assign static IPv4 to LAN interface
+    ansible.builtin.command: ip address replace {{ lan_cidr_gateway }}/{{ lan_netmask }} dev {{ lan_interface }}
+
+  - name: Persist LAN static IP with systemd unit
+    ansible.builtin.copy:
+      dest: /etc/systemd/system/{{ lan_interface }}-static-ip.service
+      mode: '0644'
+      content: |
+        [Unit]
+        Description=Static IP for {{ lan_interface }}
+        After=network-pre.target
+        Before=hostapd.service isc-dhcp-server.service
+        Wants=network-pre.target
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/sbin/ip link set {{ lan_interface }} up
+        ExecStart=/usr/sbin/ip address replace {{ lan_cidr_gateway }}/{{ lan_netmask }} dev {{ lan_interface }}
+        RemainAfterExit=yes
+
+        [Install]
+        WantedBy=multi-user.target
+
+  - name: Reload systemd daemon for LAN static IP service
+    ansible.builtin.systemd:
+      daemon_reload: true
+
+  - name: Ensure LAN static IP service is started and enabled
+    ansible.builtin.systemd:
+      name: '{{ lan_interface }}-static-ip.service'
+      state: started
+      enabled: true
 
   - name: Ensure the LAN interface is configured with the correct IP address
     ansible.builtin.shell: ip addr show {{ lan_interface }} | grep -q "{{ lan_cidr_gateway }}"
@@ -45,6 +73,7 @@
       src: ../templates/nftables.conf.j2
       dest: /etc/nftables.conf
       mode: '0644'
+      backup: true
       validate: 'nft -c -f %s'
     notify: Reload nftables
 
@@ -74,14 +103,58 @@
       src: ../templates/dhcpd.conf.j2
       dest: /etc/dhcp/dhcpd.conf
       mode: '0644'
+      backup: true
       validate: 'dhcpd -t -cf %s'
-    notify: Reload DHCP server
+    notify: Restart DHCP server
 
-  handlers:
-  - name: Reload DHCP server
+  - name: Bind DHCP server to the LAN interface
+    ansible.builtin.lineinfile:
+      path: /etc/default/isc-dhcp-server
+      regexp: '^INTERFACESv4='
+      line: 'INTERFACESv4="{{ lan_interface }}"'
+      create: false
+      backup: true
+    notify: Restart DHCP server
+
+  - name: Ensure DHCP server service is started and enabled
     ansible.builtin.systemd:
       name: isc-dhcp-server
-      state: reloaded
+      state: started
+      enabled: true
+
+  handlers:
+  - name: Restart DHCP server
+    ansible.builtin.systemd:
+      name: isc-dhcp-server
+      state: restarted
+
+- name: Start router services after interface setup
+  hosts: servers
+  become: yes
+  tasks:
+  - name: Ensure LAN static IP service is started and enabled
+    ansible.builtin.systemd:
+      name: '{{ lan_interface }}-static-ip.service'
+      state: started
+      enabled: true
+
+  - name: Ensure nftables service is started and enabled
+    ansible.builtin.systemd:
+      name: nftables
+      state: started
+      enabled: true
+
+  - name: Ensure DHCP service is started and enabled
+    ansible.builtin.systemd:
+      name: isc-dhcp-server
+      state: started
+      enabled: true
+
+  - name: Ensure hostapd service is started and enabled
+    ansible.builtin.systemd:
+      name: hostapd
+      state: started
+      enabled: true
 
 - name: Configure hostapd
   hosts: servers
@@ -91,3 +164,21 @@
     ansible.builtin.package:
       name: hostapd
       state: present
+
+  - name: Unmask hostapd service
+    ansible.builtin.systemd:
+      name: hostapd
+      masked: false
+
+  - name: Deploy hostapd configuration
+    ansible.builtin.template:
+      src: ../templates/hostapd.conf.j2
+      dest: /etc/hostapd/hostapd.conf
+      mode: '0644'
+      backup: true
+
+  - name: Ensure hostapd service is enabled (start later)
+    ansible.builtin.systemd:
+      name: hostapd
+      state: stopped
+      enabled: true

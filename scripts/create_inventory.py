@@ -1,11 +1,23 @@
 #!/usr/bin/env python
 import argparse
+import json
+import secrets
 import socket
+import urllib.request
 from pathlib import Path
 from typing import List, Optional
 
 from jinja2 import Environment, FileSystemLoader
 
+
+url = "https://ipinfo.io"
+try:
+    with urllib.request.urlopen(url) as response:
+        data = json.loads(response.read().decode())
+        country_code = data.get("country")
+except Exception as e:
+    print(f"[!] Error fetching country code from {url}: {e}")
+    country_code = "US"  # Default to US if the country code cannot be fetched
 
 cwd = Path.cwd()
 PROJECT_DIR = Path(__file__).parents[1].resolve()
@@ -14,6 +26,10 @@ DEFAULT_TEMPLATE_DIR = (PROJECT_DIR / "templates").relative_to(cwd)
 DEFAULT_WAN_INTERFACE = "eth0"
 DEFAULT_LAN_INTERFACE = "wlan0"
 DEFAULT_LAN_CIDR = "192.168.1.0/24"
+DEFAULT_HOSTAPD_SSID = "Test SSID"
+DEFAULT_HOSTAPD_COUNTRY_CODE = country_code
+# Generate a random passphrase for the Wi-Fi network
+DEFAULT_HOSTAPD_WPA_PASSPHRASE = secrets.token_urlsafe(32)
 
 
 def concatenate_binaries(array: List[int], fixed_length: int = 0) -> int:
@@ -45,6 +61,9 @@ def main(
     lan_cidr_end: Optional[str] = None,
     lan_cidr_gateway: Optional[str] = None,
     lan_cidr_broadcast: Optional[str] = None,
+    hostapd_ssid: str = DEFAULT_HOSTAPD_SSID,
+    hostapd_country_code: str = DEFAULT_HOSTAPD_COUNTRY_CODE,
+    hostapd_wpa_passphrase: str = DEFAULT_HOSTAPD_WPA_PASSPHRASE,
     template_dir: Optional[str] = None,
     verbose: bool = False,
 ) -> None:
@@ -105,11 +124,15 @@ def main(
         "lan_interface": lan_interface,
         "lan_cidr": f"{lan}/{subnet_bits}",
         "lan": lan,
+        "lan_netmask": subnet_bits,
         "lan_cidr_netmask": lan_cidr_netmask,
         "lan_cidr_gateway": lan_cidr_gateway,
         "lan_cidr_broadcast": lan_cidr_broadcast,
         "lan_cidr_start": lan_cidr_start,
         "lan_cidr_end": lan_cidr_end,
+        "hostapd_ssid": hostapd_ssid,
+        "hostapd_country_code": hostapd_country_code,
+        "hostapd_wpa_passphrase": hostapd_wpa_passphrase,
     }
 
     if verbose:
@@ -139,6 +162,27 @@ if __name__ == "__main__":
         description=("Generate an Ansible inventory file from a template using Jinja2.")
     )
     parser.add_argument("username", type=str, help="The username for the server.")
+    parser.add_argument(
+        "--hostapd-country-code",
+        type=str,
+        default=DEFAULT_HOSTAPD_COUNTRY_CODE,
+        help=f"The country code for the hostapd configuration (default: {DEFAULT_HOSTAPD_COUNTRY_CODE}).",
+    )
+    parser.add_argument(
+        "--hostapd-ssid",
+        type=str,
+        default=DEFAULT_HOSTAPD_SSID,
+        help=f"The SSID for the hostapd configuration (default: {DEFAULT_HOSTAPD_SSID}).",
+    )
+    parser.add_argument(
+        "--hostapd-wpa-passphrase",
+        type=str,
+        default=DEFAULT_HOSTAPD_WPA_PASSPHRASE,
+        help=(
+            "The WPA passphrase for the hostapd configuration (default: a randomly generated 32-character string). "
+            "Make sure to use a strong passphrase to secure your Wi-Fi network."
+        ),
+    )
     parser.add_argument(
         "--ip-address",
         type=str,
@@ -206,6 +250,7 @@ if __name__ == "__main__":
         help=f"The directory where the generated inventory file will be saved (default: {DEFAULT_OUT_DIR}).",
     )
     parser.add_argument(
+        "-v",
         "--verbose",
         action="store_true",
         help="Enable verbose output for debugging purposes.",
@@ -229,6 +274,9 @@ if __name__ == "__main__":
         lan_cidr_broadcast=args.lan_cidr_broadcast,
         lan_cidr_start=args.lan_cidr_start,
         lan_cidr_end=args.lan_cidr_end,
+        hostapd_ssid=args.hostapd_ssid,
+        hostapd_country_code=args.hostapd_country_code,
+        hostapd_wpa_passphrase=args.hostapd_wpa_passphrase,
         template_dir=args.template_dir,
         verbose=args.verbose,
     )
