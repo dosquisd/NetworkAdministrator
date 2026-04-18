@@ -33,16 +33,11 @@ fn csp_stripping(response: &mut Response) {
 }
 
 pub fn remove_ad_scripts(html: &str) -> String {
-    let internal_pattern = r#"(?s)<script(?![^>]*\ssrc\s*=)[^>]*>[^<]*\w+\s*=\s*window\.adsbygoogle[^<]*(?:<(?!/script>)[^<]*)*</script>"#;
-    // `regex` crate does not support look-around, so we use `fancy_regex` here.
-    let internal_re = fancy_regex::Regex::new(internal_pattern).unwrap();
-
     let external_pattern =
         r#"(?s)<script[^>]*\ssrc\s*=\s*["']?(?:https?:)?\/\/([^\/\s"']+)[^>]*>.*?<\/script>"#;
-    let external_re = regex::Regex::new(external_pattern).unwrap();
+    let external_re = regex::Regex::new(external_pattern).expect("invalid external script regex");
 
-    let mut modified_html = html.to_string();
-    modified_html = internal_re.replace_all(&modified_html, "").to_string();
+    let mut modified_html = strip_inline_adsbygoogle_scripts(html);
 
     for (script_snippet, [host]) in external_re.captures_iter(html).map(|c| c.extract()) {
         if is_domain_blacklisted(host) {
@@ -51,6 +46,43 @@ pub fn remove_ad_scripts(html: &str) -> String {
     }
 
     modified_html.trim().to_string()
+}
+
+fn strip_inline_adsbygoogle_scripts(html: &str) -> String {
+    let mut output = String::with_capacity(html.len());
+    let mut cursor = 0;
+
+    while let Some(open_rel) = html[cursor..].find("<script") {
+        let open_start = cursor + open_rel;
+        output.push_str(&html[cursor..open_start]);
+
+        let Some(tag_end_rel) = html[open_start..].find('>') else {
+            output.push_str(&html[open_start..]);
+            return output;
+        };
+        let tag_end = open_start + tag_end_rel;
+
+        let Some(close_rel) = html[tag_end + 1..].find("</script>") else {
+            output.push_str(&html[open_start..]);
+            return output;
+        };
+        let close_start = tag_end + 1 + close_rel;
+        let close_end = close_start + "</script>".len();
+
+        let script_tag = &html[open_start..=tag_end];
+        let script_body = &html[tag_end + 1..close_start];
+        let has_src = script_tag.to_ascii_lowercase().contains("src=");
+        let contains_ads_marker = script_body.contains("window.adsbygoogle");
+
+        if !(contains_ads_marker && !has_src) {
+            output.push_str(&html[open_start..close_end]);
+        }
+
+        cursor = close_end;
+    }
+
+    output.push_str(&html[cursor..]);
+    output
 }
 
 #[allow(dead_code, unused_variables)]
