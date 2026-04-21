@@ -17,7 +17,7 @@ pub struct HttpsRequest {
     pub version: String,
     pub uri: String,
     pub headers: HashMap<String, String>,
-    pub body: Option<String>,
+    pub body: Option<Vec<u8>>,
 }
 
 #[derive(Clone, Debug)]
@@ -95,7 +95,7 @@ impl Into<HttpRequest> for Request {
                     uri: req.uri.parse().unwrap_or_default(),
                     version,
                     headers,
-                    body: req.body.map(|b| bytes::Bytes::from(b)),
+                    body: req.body.map(bytes::Bytes::from),
                 }
             }
         }
@@ -120,7 +120,7 @@ impl Into<HttpsRequest> for Request {
                         )
                     })
                     .collect(),
-                body: req.body.map(|b| String::from_utf8_lossy(&b).to_string()),
+                body: req.body.map(|b| b.to_vec()),
             },
         }
     }
