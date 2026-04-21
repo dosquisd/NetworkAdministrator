@@ -9,7 +9,9 @@ use tokio::net::TcpListener;
 
 use crate::config::get_global_config;
 use crate::filters::is_domain_blacklisted;
-use crate::proxy::{process_http_request, process_https_request_with_interception};
+use crate::proxy::{
+    process_http_request, process_https_request, process_https_request_with_interception,
+};
 use crate::utils::{
     DNS_RESOLVER,
     buffer::{parse_first_line_buffer, read_first_line_buffer},
@@ -65,16 +67,23 @@ pub async fn start_proxy_server(
                             return;
                         }
 
-                        if intercept_https_request(host.as_str(), Some(config)) {
-                            if let Err(e) =
-                                process_https_request_with_interception(&mut stream).await
-                            {
-                                tracing::error!(
-                                    "Error processing HTTPS request (interception): {e}"
-                                );
+                        match intercept_https_request(host.as_str(), Some(config)) {
+                            true => {
+                                if let Err(e) =
+                                    process_https_request_with_interception(&mut stream).await
+                                {
+                                    tracing::error!(
+                                        "Error processing HTTPS request (interception): {e}"
+                                    );
+                                }
+                                // It's not possible to implement a fallback to restart the connection here, because all the
+                                // buffer were consumed previously, so we just return and the client will have to restart the connection
                             }
-                            // It's not possible to restart the connection here, because all the buffer were consumed
-                            // previously, so we just return and the client will have to restart the connection
+                            false => {
+                                if let Err(e) = process_https_request(&mut stream).await {
+                                    tracing::error!("Error processing HTTPS request (tunnel): {e}");
+                                }
+                            }
                         }
                     } else {
                         tracing::info!("Detected HTTP connection from {}", peer_addr);
