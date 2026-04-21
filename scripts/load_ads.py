@@ -1,3 +1,5 @@
+import argparse
+import itertools
 import tomllib
 from pathlib import Path
 from typing import Dict, List, Set
@@ -18,7 +20,9 @@ def load_current_config() -> Dict[str, str]:
 
 def save_current_config(config: Dict[str, str]) -> None:
     # Different files to avoid conflicts with running filter used by the proxy
-    with open(CONFIG_PATH / "filter.updated.toml", "wb") as f:
+    save_path = CONFIG_PATH / "filter.updated.toml"
+    print(f"Saving updated config to {save_path}")
+    with open(save_path, "wb") as f:
         tomli_w.dump(config, f)
 
 
@@ -48,34 +52,59 @@ def process_file(file: Path) -> Set[str]:
     return ads
 
 
-def load_ads_list() -> List[str]:
-    files = ADS_LIST_PATH.rglob("*.txt")
-    ads_host = set()
-    for file in files:
+def load_ads_list(ads_list: Path) -> List[str]:
+    def _add_host(file: Path) -> None:
+        nonlocal ads_host
         ads = process_file(file)
         ads_host.update(ads)
+
+    files = itertools.chain(ads_list.rglob("*.txt"), ads_list.rglob("hosts"))
+    ads_host = set()
+    list(map(lambda file: _add_host(file), files))
 
     return sorted(ads_host)
 
 
-def main() -> None:
+def main(ads_list: Path, force_update: bool = False) -> None:
     current_config = load_current_config()
-    blacklist_exact = current_config["blacklist"]["exact"]
+    blacklist_exact = current_config["blacklist"]["exact"]  # type: ignore
     print(f"Current blacklist exact entries: {len(blacklist_exact):,}")
 
-    loaded_ads = load_ads_list()
+    loaded_ads = load_ads_list(ads_list)
     print(f"Loaded {len(loaded_ads):,} ads")
 
-    print("\nMerging ads into current config...")
-    current_config["blacklist"]["exact"] = sorted(
-        set(loaded_ads) | set(blacklist_exact)
-    )
+    if force_update:
+        print("Force update enabled, replacing current config with loaded ads...")
+        current_config["blacklist"]["exact"] = sorted(loaded_ads)  # type: ignore
+    else:
+        print("\nMerging ads into current config...")
+        current_config["blacklist"]["exact"] = sorted(  # type: ignore
+            set(loaded_ads) | set(blacklist_exact)
+        )
 
-    diff_size = len(current_config["blacklist"]["exact"]) - len(blacklist_exact)
+    diff_size = len(current_config["blacklist"]["exact"]) - len(blacklist_exact)  # type: ignore
     print(f"Diff blacklist exact entries: {diff_size:,}")
 
     save_current_config(current_config)
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Load ads from the list and update the config.")
+    parser.add_argument(
+        "ads-list",
+        type=Path,
+        default=ADS_LIST_PATH,
+        help="Path to the ads list directory (default: %(default)s)",
+    )
+    parser.add_argument(
+        "-f",
+        "--force-update",
+        action="store_true",
+        help="Force update the config with loaded ads, replacing existing entries.",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    main(ads_list=args.ads_list, force_update=args.force_update)
