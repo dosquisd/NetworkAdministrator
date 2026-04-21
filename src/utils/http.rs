@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use tokio::{
-    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
 };
 use tokio_native_tls::TlsStream;
@@ -14,12 +14,40 @@ pub fn parse_headers(lines: &[&str]) -> HashMap<String, String> {
 
     // Maybe there's a more efficient way to do this, idk
     for line in lines {
-        if let Some((key, value)) = line.split_once(": ") {
-            headers.insert(key.to_string(), value.to_string());
+        if let Some((key, value)) = line.split_once(':') {
+            headers.insert(key.trim().to_ascii_lowercase(), value.trim().to_string());
         }
     }
 
     headers
+}
+
+async fn read_line_bytes(
+    tls_stream: &mut TlsStream<&mut TcpStream>,
+) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+    let mut line = Vec::new();
+    let mut byte = [0u8; 1];
+
+    loop {
+        let n = tls_stream.read(&mut byte).await?;
+        if n == 0 {
+            if line.is_empty() {
+                return Err("Connection closed while reading line".into());
+            }
+            break;
+        }
+
+        line.push(byte[0]);
+        if byte[0] == b'\n' {
+            break;
+        }
+
+        if line.len() > 8 * 1024 {
+            return Err("Line too large while parsing stream".into());
+        }
+    }
+
+    Ok(line)
 }
 
 pub async fn read_http_stream(
@@ -46,18 +74,55 @@ pub async fn read_http_stream(
 
     let headers = parse_headers(header_lines.as_ref());
 
-    // Parse body as String
-    // Check if there's a body based on Content-Length
-    let body = if let Some(content_length) = headers.get("Content-Length") {
+    // Parse body based on Content-Length or Transfer-Encoding.
+    let body = if let Some(content_length) = headers.get("content-length") {
         let length: usize = content_length.parse().unwrap_or(0);
 
         if length > 0 {
             let mut body_buffer = vec![0u8; length];
             tls_stream.read_exact(&mut body_buffer).await?;
-            Some(String::from_utf8_lossy(&body_buffer).to_string())
+            Some(body_buffer)
         } else {
             None
         }
+    } else if headers
+        .get("transfer-encoding")
+        .map(|e| e.to_lowercase().contains("chunked"))
+        .unwrap_or(false)
+    {
+        let mut body_data = Vec::new();
+
+        loop {
+            let mut chunk_size_line = read_line_bytes(tls_stream).await?;
+
+            while chunk_size_line.last() == Some(&b'\n') || chunk_size_line.last() == Some(&b'\r') {
+                chunk_size_line.pop();
+            }
+
+            let size_str = String::from_utf8_lossy(&chunk_size_line);
+            let size_hex = size_str.split(';').next().unwrap_or("").trim();
+            let chunk_size = usize::from_str_radix(size_hex, 16)
+                .map_err(|e| format!("Invalid request chunk size hex '{}': {}", size_hex, e))?;
+
+            if chunk_size == 0 {
+                loop {
+                    let trailer_line = read_line_bytes(tls_stream).await?;
+                    if trailer_line == b"\r\n" || trailer_line == b"\n" {
+                        break;
+                    }
+                }
+                break;
+            }
+
+            let mut chunk_data = vec![0u8; chunk_size];
+            tls_stream.read_exact(&mut chunk_data).await?;
+            body_data.extend_from_slice(&chunk_data);
+
+            let mut trailing = [0u8; 2];
+            tls_stream.read_exact(&mut trailing).await?;
+        }
+
+        Some(body_data)
     } else {
         None
     };
@@ -74,54 +139,41 @@ pub async fn read_http_stream(
 pub async fn read_stream_response(
     tls_stream: &mut TlsStream<&mut TcpStream>,
 ) -> Result<HttpsResponse, Box<dyn std::error::Error + Send + Sync>> {
-    let mut reader = BufReader::new(tls_stream);
+    let headers_raw = read_headers_buffer(tls_stream).await?;
+    let lines = headers_raw
+        .split("\r\n")
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<&str>>();
 
-    // Read status line
-    let mut status_line = String::new();
-    reader.read_line(&mut status_line).await?;
-
+    let status_line = lines.first().copied().unwrap_or_default();
     let parts: Vec<&str> = status_line.trim().splitn(3, ' ').collect();
     if parts.len() < 3 {
         return Err("Malformed HTTP response line".into());
     }
     let (version, status_code, status_text) = (parts[0], parts[1], parts[2]);
 
-    // Read headers
-    let mut headers = HashMap::new();
-    loop {
-        let mut header_line = String::new();
-        reader.read_line(&mut header_line).await?;
-
-        if header_line == "\r\n" || header_line == "\n" {
-            break;
-        }
-
-        if let Some((key, value)) = header_line.trim().split_once(": ") {
-            headers.insert(key.to_string(), value.to_string());
-        }
-    }
+    let header_lines = lines.iter().skip(1).copied().collect::<Vec<&str>>();
+    let headers = parse_headers(header_lines.as_ref());
 
     // Read body based on Content-Length or Transfer-Encoding
-    let body = if let Some(content_length) = headers.get("Content-Length") {
+    let body = if let Some(content_length) = headers.get("content-length") {
         let length: usize = content_length.parse()?;
         if length > 0 {
             let mut body_buffer = vec![0u8; length];
-            reader.read_exact(&mut body_buffer).await?;
+            tls_stream.read_exact(&mut body_buffer).await?;
             Some(body_buffer)
         } else {
             None
         }
     } else if headers
-        .get("Transfer-Encoding")
+        .get("transfer-encoding")
         .map(|e| e.to_lowercase().contains("chunked"))
         .unwrap_or(false)
     {
         let mut body_data = Vec::new();
 
         loop {
-            // Read chunk size line usando read_until
-            let mut chunk_size_line = Vec::new();
-            reader.read_until(b'\n', &mut chunk_size_line).await?;
+            let mut chunk_size_line = read_line_bytes(tls_stream).await?;
 
             // Remove \r\n or \n
             while chunk_size_line.last() == Some(&b'\n') || chunk_size_line.last() == Some(&b'\r') {
@@ -143,8 +195,7 @@ pub async fn read_stream_response(
             if chunk_size == 0 {
                 // Read trailers until empty line
                 loop {
-                    let mut trailer_line = Vec::new();
-                    reader.read_until(b'\n', &mut trailer_line).await?;
+                    let trailer_line = read_line_bytes(tls_stream).await?;
                     if trailer_line == b"\r\n" || trailer_line == b"\n" {
                         break;
                     }
@@ -154,12 +205,12 @@ pub async fn read_stream_response(
 
             // Read chunk data
             let mut chunk_data = vec![0u8; chunk_size];
-            reader.read_exact(&mut chunk_data).await?;
+            tls_stream.read_exact(&mut chunk_data).await?;
             body_data.extend_from_slice(&chunk_data);
 
             // Read trailing CRLF after chunk
             let mut trailing = [0u8; 2];
-            reader.read_exact(&mut trailing).await?;
+            tls_stream.read_exact(&mut trailing).await?;
 
             tracing::trace!("Read chunk of {} bytes", chunk_size);
         }
@@ -183,19 +234,33 @@ pub async fn write_request(
     tls_stream: &mut TlsStream<&mut TcpStream>,
     request: &HttpsRequest,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let mut modified_headers = request.headers.clone();
+    if let Some(body) = &request.body {
+        if modified_headers
+            .get("transfer-encoding")
+            .map(|v| v.to_lowercase().contains("chunked"))
+            .unwrap_or(false)
+        {
+            modified_headers.remove("transfer-encoding");
+            modified_headers.insert("content-length".to_string(), body.len().to_string());
+        }
+    }
+
     let mut request_string = format!("{} {} {}\r\n", request.method, request.uri, request.version);
 
-    for (key, value) in &request.headers {
+    for (key, value) in &modified_headers {
         request_string.push_str(&format!("{}: {}\r\n", key, value));
     }
 
     request_string.push_str("\r\n");
 
+    tls_stream.write_all(request_string.as_bytes()).await?;
+
     if let Some(body) = &request.body {
-        request_string.push_str(body);
+        tls_stream.write_all(body).await?;
     }
 
-    tls_stream.write_all(request_string.as_bytes()).await?;
+    tls_stream.flush().await?;
 
     Ok(())
 }
@@ -219,11 +284,11 @@ pub async fn write_response(
             modified_headers
         );
 
-        modified_headers.remove("Transfer-Encoding");
-        modified_headers.remove("Content-Encoding");
+        modified_headers.remove("transfer-encoding");
+        modified_headers.remove("content-encoding");
 
         // Set correct Content-Length
-        modified_headers.insert("Content-Length".to_string(), body.len().to_string());
+        modified_headers.insert("content-length".to_string(), body.len().to_string());
     }
 
     for (key, value) in &modified_headers {

@@ -1,4 +1,4 @@
-use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, BufReader};
 
 pub async fn read_first_line_buffer(
     buffer: &[u8],
@@ -35,40 +35,36 @@ pub async fn read_headers_buffer<S>(
 where
     S: AsyncRead + Unpin,
 {
-    let mut reader = BufReader::new(stream);
-    let mut buffer = String::new();
-    let mut line_count = 0u16;
+    let mut raw = Vec::with_capacity(1024);
+    let mut byte = [0u8; 1];
 
     loop {
-        let mut line = String::new();
-        let bytes_read = reader.read_line(&mut line).await?;
-
-        if bytes_read == 0 {
-            if line_count == 0 {
+        let n = stream.read(&mut byte).await?;
+        if n == 0 {
+            if raw.is_empty() {
                 return Err("Connection closed before any data received".into());
             }
             return Err("Connection closed before complete headers".into());
         }
 
-        line_count += 1;
-        buffer.push_str(&line);
+        raw.push(byte[0]);
 
-        if line == "\r\n" {
-            tracing::trace!("Found end of headers (CRLF)");
+        let len = raw.len();
+        let found_crlf = len >= 4 && &raw[len - 4..] == b"\r\n\r\n";
+        let found_lf = len >= 2 && &raw[len - 2..] == b"\n\n";
+        if found_crlf || found_lf {
+            tracing::trace!("Found end of headers");
             break;
         }
 
-        if line == "\n" {
-            tracing::trace!("Found end of headers (LF only)");
-            break;
-        }
-
-        // Don't allow too many header lines
-        if line_count > 100 {
-            return Err("Too many header lines (possible attack)".into());
+        // Header size guard to avoid abuse.
+        if raw.len() > 64 * 1024 {
+            return Err("Headers too large (possible attack)".into());
         }
     }
 
+    let buffer = String::from_utf8_lossy(&raw).to_string();
+    let line_count = buffer.lines().count();
     tracing::trace!("Read {} lines, {} bytes total", line_count, buffer.len());
     Ok(buffer)
 }

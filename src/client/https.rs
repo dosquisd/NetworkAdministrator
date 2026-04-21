@@ -10,13 +10,66 @@ use uuid::Uuid;
 
 use crate::ads::{analyze_and_modify_request, analyze_and_modify_response};
 use crate::config::get_global_config;
-use crate::filters::is_domain_blacklisted;
+use crate::filters::{is_domain_blacklisted, is_domain_whitelisted};
 use crate::schemas::{HttpsRequest, HttpsResponse};
 use crate::utils::{
     DNS_RESOLVER,
     decoders::{decode_brotli, decode_deflate, decode_gzip, decode_zstd},
     http::{read_http_stream, read_stream_response, write_request, write_response},
 };
+
+fn normalize_host(value: &str) -> String {
+    let mut host = value.trim();
+
+    // Strip IPv6 brackets if present.
+    if host.starts_with('[') {
+        if let Some(end) = host.find(']') {
+            host = &host[1..end];
+        }
+        return host.to_string();
+    }
+
+    // Strip optional port for normal hostnames.
+    if let Some((h, _)) = host.split_once(':') {
+        return h.to_string();
+    }
+
+    host.to_string()
+}
+
+fn host_from_https_request(req: &HttpsRequest) -> Option<String> {
+    // CONNECT-style authority form, e.g. host:443
+    if req.method.eq_ignore_ascii_case("CONNECT") {
+        if let Some((host, _)) = req.uri.split_once(':') {
+            return Some(normalize_host(host));
+        }
+        if !req.uri.trim().is_empty() {
+            return Some(normalize_host(&req.uri));
+        }
+    }
+
+    // Origin-form requests over intercepted TLS usually carry Host header.
+    let header_host = req
+        .headers
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("host"))
+        .map(|(_, v)| v.as_str());
+
+    if let Some(host) = header_host {
+        if !host.trim().is_empty() {
+            return Some(normalize_host(host));
+        }
+    }
+
+    // Absolute-form fallback.
+    if let Some((host, _)) = req.uri.split_once(':') {
+        if !host.trim().is_empty() {
+            return Some(normalize_host(host));
+        }
+    }
+
+    None
+}
 
 #[tracing::instrument(
     level = "info",
@@ -77,6 +130,9 @@ pub async fn forward_https_request_no_tunnel(
     dest_tls_stream: &mut TlsStream<&mut TcpStream>,
     version: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let mut last_request_host = String::new();
+    let mut last_request_whitelisted = false;
+
     loop {
         tokio::select! {
                 http_request = read_http_stream(client_tls_stream) => {
@@ -92,8 +148,11 @@ pub async fn forward_https_request_no_tunnel(
                     let modified_request = match config.block_ads {
                         true => {
                             let request: HttpsRequest = analyze_and_modify_request(&http_request.into()).into();
-                            let host = request.uri.split(':').next().unwrap_or_default();
-                            if is_domain_blacklisted(host) {
+                            let host = host_from_https_request(&request).unwrap_or_default();
+                            last_request_host = host.clone();
+                            last_request_whitelisted = !host.is_empty() && is_domain_whitelisted(&host);
+
+                            if !last_request_whitelisted && is_domain_blacklisted(&host) {
                                 tracing::info!("Blocking ad request for request ID {}", req_id);
 
                                 let response = HttpsResponse {
@@ -132,7 +191,7 @@ pub async fn forward_https_request_no_tunnel(
                     body_size = http_response.body.as_ref().map_or(0, |b| b.len())
                 );
 
-                if let Some(encoding) = http_response.headers.get("Content-Encoding") && let Some(body) = http_response.body.as_ref() {
+                if let Some(encoding) = http_response.headers.get("content-encoding") && let Some(body) = http_response.body.as_ref() {
                     let encodings: Vec<&str> = encoding.split(',')
                         .map(|e| e.trim())
                         .collect::<Vec<_>>()
@@ -211,7 +270,7 @@ pub async fn forward_https_request_no_tunnel(
 
                 let config = get_global_config();
                 let mut modified_response = http_response.clone();
-                let content_type = modified_response.headers.get("Content-Type");
+                let content_type = modified_response.headers.get("content-type");
                 if let Some(ct) = content_type && ct.contains("text/html") {
                     let body = modified_response.body.clone().unwrap_or_default();
 
@@ -229,7 +288,16 @@ pub async fn forward_https_request_no_tunnel(
 
                     modified_response.body = Some(body_text.as_bytes().to_vec());
                     modified_response = if config.block_ads {
-                        analyze_and_modify_response(&modified_response.into()).into()
+                        if last_request_whitelisted {
+                            tracing::debug!(
+                                "Skipping ad-block response rewrite for whitelisted host '{}' (request ID {})",
+                                last_request_host,
+                                req_id
+                            );
+                            modified_response
+                        } else {
+                            analyze_and_modify_response(&modified_response.into()).into()
+                        }
                     } else {
                         modified_response
                     };
