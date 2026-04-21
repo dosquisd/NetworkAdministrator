@@ -1,3 +1,5 @@
+mod utils;
+
 use std::net::SocketAddr;
 
 use hyper::service::service_fn;
@@ -6,14 +8,13 @@ use hyper_util::server::conn::auto;
 use tokio::net::TcpListener;
 
 use crate::config::get_global_config;
-use crate::filters::{is_domain_blacklisted, is_domain_whitelisted};
-use crate::proxy::{
-    process_http_request, process_https_request, process_https_request_with_interception,
-};
+use crate::filters::is_domain_blacklisted;
+use crate::proxy::{process_http_request, process_https_request_with_interception};
 use crate::utils::{
     DNS_RESOLVER,
     buffer::{parse_first_line_buffer, read_first_line_buffer},
 };
+use utils::intercept_https_request;
 
 #[tracing::instrument(level = "info", name = "Server")]
 pub async fn start_proxy_server(
@@ -64,15 +65,7 @@ pub async fn start_proxy_server(
                             return;
                         }
 
-                        let is_whitelisted = is_domain_whitelisted(&host);
-                        if is_whitelisted {
-                            tracing::info!(
-                                "The host {} is whitelisted, skipping interception",
-                                host
-                            );
-                        }
-
-                        if config.intercept_tls && !is_whitelisted {
+                        if intercept_https_request(host.as_str(), Some(config)) {
                             if let Err(e) =
                                 process_https_request_with_interception(&mut stream).await
                             {
@@ -80,12 +73,8 @@ pub async fn start_proxy_server(
                                     "Error processing HTTPS request (interception): {e}"
                                 );
                             }
-                        } else {
-                            if let Err(e) = process_https_request(&mut stream).await {
-                                tracing::error!(
-                                    "Error processing HTTPS request (no interception): {e}"
-                                );
-                            }
+                            // It's not possible to restart the connection here, because all the buffer were consumed
+                            // previously, so we just return and the client will have to restart the connection
                         }
                     } else {
                         tracing::info!("Detected HTTP connection from {}", peer_addr);

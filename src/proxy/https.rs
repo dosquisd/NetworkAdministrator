@@ -121,7 +121,6 @@ pub async fn process_https_request_with_interception(
     );
 
     // If the TLS handshake fails, could means that the client does not trust our CA
-    // TODO: Implement a fallback to plain TCP tunnel if needed
     let mut client_tls_stream = tls_acceptor.accept(client_stream).await.map_err(|e| {
         tracing::error!(
             "TLS handshake with client failed for request ID {}: {}",
