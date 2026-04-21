@@ -57,6 +57,58 @@ pub struct DomainFilter {
 }
 
 impl DomainFilter {
+    fn wildcard_matches(domain: &str, pattern: &str) -> bool {
+        let pattern = pattern.trim();
+        if pattern.is_empty() {
+            return false;
+        }
+
+        // Keep exact behavior for non-wildcard entries.
+        if !pattern.contains('*') {
+            return domain == pattern;
+        }
+
+        if pattern == "*" {
+            return true;
+        }
+
+        let starts_with_star = pattern.starts_with('*');
+        let ends_with_star = pattern.ends_with('*');
+        let parts: Vec<&str> = pattern.split('*').filter(|p| !p.is_empty()).collect();
+
+        // Pattern was only wildcards like "***".
+        if parts.is_empty() {
+            return true;
+        }
+
+        let mut pos = 0usize;
+        for (index, part) in parts.iter().enumerate() {
+            if index == 0 && !starts_with_star {
+                if !domain[pos..].starts_with(part) {
+                    return false;
+                }
+                pos += part.len();
+                continue;
+            }
+
+            if index == parts.len() - 1 && !ends_with_star {
+                if let Some(found) = domain[pos..].rfind(part) {
+                    let abs = pos + found;
+                    return abs + part.len() == domain.len();
+                }
+                return false;
+            }
+
+            if let Some(found) = domain[pos..].find(part) {
+                pos += found + part.len();
+            } else {
+                return false;
+            }
+        }
+
+        true
+    }
+
     pub fn load(file: Option<PathBuf>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let file = file.unwrap_or(FILTER_PATH.clone());
         let content = std::fs::read_to_string(&file).unwrap_or_default();
@@ -268,7 +320,7 @@ impl DomainFilter {
                 if self
                     .blacklist_wildcards
                     .iter()
-                    .any(|wc| domain.ends_with(wc.trim_start_matches('*')))
+                    .any(|wc| Self::wildcard_matches(domain, wc))
                 {
                     return true;
                 }
@@ -285,7 +337,7 @@ impl DomainFilter {
                 if self
                     .whitelist_wildcards
                     .iter()
-                    .any(|wc| domain.ends_with(wc.trim_start_matches('*')))
+                    .any(|wc| Self::wildcard_matches(domain, wc))
                 {
                     return true;
                 }
