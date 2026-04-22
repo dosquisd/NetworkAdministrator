@@ -5,7 +5,7 @@ authoritative;
 subnet {{ lan }} netmask {{ lan_cidr_netmask }} {
     range {{ lan_cidr_start }} {{ lan_cidr_end }};
         option routers             {{ lan_cidr_gateway }};
-        option domain-name-servers {{ lan_cidr_gateway }};
+    option domain-name-servers {{ dhcp_dns_servers | default('1.1.1.1, 8.8.8.8') }};
         option subnet-mask         {{ lan_cidr_netmask }};
         option broadcast-address   {{ lan_cidr_broadcast }};
 }

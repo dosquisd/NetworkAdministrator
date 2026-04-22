@@ -27,6 +27,7 @@ DEFAULT_WAN_INTERFACE = "eth0"
 DEFAULT_LAN_INTERFACE = "wlan0"
 DEFAULT_LAN_CIDR = "192.168.1.0/24"
 DEFAULT_HOSTAPD_SSID = "Test SSID"
+DEFAULT_SECONDARY_DNS_SERVER = "8.8.8.8"
 DEFAULT_HOSTAPD_COUNTRY_CODE = country_code
 # Generate a random passphrase for the Wi-Fi network
 DEFAULT_HOSTAPD_WPA_PASSPHRASE = secrets.token_urlsafe(32)
@@ -61,6 +62,7 @@ def main(
     lan_cidr_end: Optional[str] = None,
     lan_cidr_gateway: Optional[str] = None,
     lan_cidr_broadcast: Optional[str] = None,
+    secondary_dns_server: str = DEFAULT_SECONDARY_DNS_SERVER,
     hostapd_ssid: str = DEFAULT_HOSTAPD_SSID,
     hostapd_country_code: str = DEFAULT_HOSTAPD_COUNTRY_CODE,
     hostapd_wpa_passphrase: str = DEFAULT_HOSTAPD_WPA_PASSPHRASE,
@@ -133,6 +135,7 @@ def main(
         "hostapd_ssid": hostapd_ssid,
         "hostapd_country_code": hostapd_country_code,
         "hostapd_wpa_passphrase": hostapd_wpa_passphrase,
+        "secondary_dns_server": secondary_dns_server,
     }
 
     if verbose:
@@ -162,6 +165,12 @@ if __name__ == "__main__":
         description=("Generate an Ansible inventory file from a template using Jinja2.")
     )
     parser.add_argument("username", type=str, help="The username for the server.")
+    parser.add_argument(
+        "--dns-server",
+        type=str,
+        default=DEFAULT_SECONDARY_DNS_SERVER,
+        help=f"The IP address of the secondary DNS server to use in the DHCP configuration (default: {DEFAULT_SECONDARY_DNS_SERVER}).",
+    )
     parser.add_argument(
         "--hostapd-country-code",
         type=str,
@@ -277,6 +286,7 @@ if __name__ == "__main__":
         hostapd_ssid=args.hostapd_ssid,
         hostapd_country_code=args.hostapd_country_code,
         hostapd_wpa_passphrase=args.hostapd_wpa_passphrase,
+        secondary_dns_server=args.dns_server,
         template_dir=args.template_dir,
         verbose=args.verbose,
     )
