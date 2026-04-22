@@ -70,7 +70,7 @@
 
   - name: Deploy nftables configuration
     ansible.builtin.template:
-      src: ../templates/nftables.conf.j2
+      src: ../templates/etc/nftables.conf.j2
       dest: /etc/nftables.conf
       mode: '0644'
       backup: true
@@ -100,7 +100,7 @@
 
   - name: Deploy DHCP server configuration
     ansible.builtin.template:
-      src: ../templates/dhcpd.conf.j2
+      src: ../templates/etc/dhcp/dhcpd.conf.j2
       dest: /etc/dhcp/dhcpd.conf
       mode: '0644'
       backup: true
@@ -128,6 +128,33 @@
       name: isc-dhcp-server
       state: restarted
 
+- name: Configure hostapd
+  hosts: servers
+  become: yes
+  tasks:
+  - name: Install hostapd package
+    ansible.builtin.package:
+      name: hostapd
+      state: present
+
+  - name: Unmask hostapd service
+    ansible.builtin.systemd:
+      name: hostapd
+      masked: false
+
+  - name: Deploy hostapd configuration
+    ansible.builtin.template:
+      src: ../templates/etc/hostapd/hostapd.conf.j2
+      dest: /etc/hostapd/hostapd.conf
+      mode: '0644'
+      backup: true
+
+  - name: Ensure hostapd service is enabled (start later)
+    ansible.builtin.systemd:
+      name: hostapd
+      state: stopped
+      enabled: true
+
 - name: Start router services after interface setup
   hosts: servers
   become: yes
@@ -154,31 +181,4 @@
     ansible.builtin.systemd:
       name: hostapd
       state: started
-      enabled: true
-
-- name: Configure hostapd
-  hosts: servers
-  become: yes
-  tasks:
-  - name: Install hostapd package
-    ansible.builtin.package:
-      name: hostapd
-      state: present
-
-  - name: Unmask hostapd service
-    ansible.builtin.systemd:
-      name: hostapd
-      masked: false
-
-  - name: Deploy hostapd configuration
-    ansible.builtin.template:
-      src: ../templates/hostapd.conf.j2
-      dest: /etc/hostapd/hostapd.conf
-      mode: '0644'
-      backup: true
-
-  - name: Ensure hostapd service is enabled (start later)
-    ansible.builtin.systemd:
-      name: hostapd
-      state: stopped
       enabled: true
