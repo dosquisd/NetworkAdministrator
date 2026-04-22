@@ -22,6 +22,10 @@
     ansible.builtin.command: ip link set {{ lan_interface }} up
     changed_when: false
 
+  - name: Remove stale IPv4 addresses from LAN interface
+    ansible.builtin.command: ip -4 addr flush dev {{ lan_interface }} scope global
+    changed_when: false
+
   - name: Assign static IPv4 to LAN interface
     ansible.builtin.command: ip address replace {{ lan_cidr_gateway }}/{{ lan_netmask }} dev {{ lan_interface }}
 
@@ -39,6 +43,7 @@
         [Service]
         Type=oneshot
         ExecStart=/usr/sbin/ip link set {{ lan_interface }} up
+        ExecStart=/usr/sbin/ip -4 addr flush dev {{ lan_interface }} scope global
         ExecStart=/usr/sbin/ip address replace {{ lan_cidr_gateway }}/{{ lan_netmask }} dev {{ lan_interface }}
         RemainAfterExit=yes
 
@@ -57,6 +62,10 @@
 
   - name: Ensure the LAN interface is configured with the correct IP address
     ansible.builtin.shell: ip addr show {{ lan_interface }} | grep -q "{{ lan_cidr_gateway }}"
+    changed_when: false
+
+  - name: Ensure default route exists through WAN interface
+    ansible.builtin.shell: ip route show default | grep -q " dev {{ wan_interface }}"
     changed_when: false
 
 - name: Configure nftables
@@ -127,6 +136,30 @@
     ansible.builtin.systemd:
       name: isc-dhcp-server
       state: restarted
+
+- name: Configure Docker-compatible forwarding with iptables
+  hosts: servers
+  become: yes
+  tasks:
+  - name: Ensure DOCKER-USER chain exists
+    ansible.builtin.shell: iptables -N DOCKER-USER 2>/dev/null || true
+    changed_when: false
+
+  - name: Ensure FORWARD jumps to DOCKER-USER
+    ansible.builtin.shell: iptables -C FORWARD -j DOCKER-USER || iptables -I FORWARD 1 -j DOCKER-USER
+    changed_when: false
+
+  - name: Allow LAN to WAN forwarding in DOCKER-USER
+    ansible.builtin.shell: iptables -C DOCKER-USER -i {{ lan_interface }} -o {{ wan_interface }} -j ACCEPT || iptables -I DOCKER-USER 1 -i {{ lan_interface }} -o {{ wan_interface }} -j ACCEPT
+    changed_when: false
+
+  - name: Allow established WAN to LAN return traffic in DOCKER-USER
+    ansible.builtin.shell: iptables -C DOCKER-USER -i {{ wan_interface }} -o {{ lan_interface }} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT || iptables -I DOCKER-USER 1 -i {{ wan_interface }} -o {{ lan_interface }} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+    changed_when: false
+
+  - name: Ensure NAT masquerade exists for LAN in iptables
+    ansible.builtin.shell: iptables -t nat -C POSTROUTING -s {{ lan_cidr }} -o {{ wan_interface }} -j MASQUERADE || iptables -t nat -A POSTROUTING -s {{ lan_cidr }} -o {{ wan_interface }} -j MASQUERADE
+    changed_when: false
 
 - name: Configure hostapd
   hosts: servers
