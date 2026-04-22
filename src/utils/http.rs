@@ -10,12 +10,31 @@ use super::buffer::read_headers_buffer;
 use crate::schemas::{HttpsRequest, HttpsResponse};
 
 pub fn parse_headers(lines: &[&str]) -> HashMap<String, String> {
-    let mut headers = HashMap::new();
+    let mut headers: HashMap<String, String> = HashMap::new();
 
     // Maybe there's a more efficient way to do this, idk
     for line in lines {
         if let Some((key, value)) = line.split_once(':') {
-            headers.insert(key.trim().to_ascii_lowercase(), value.trim().to_string());
+            let normalized_key = key.trim().to_ascii_lowercase();
+            let normalized_value = value.trim().to_string();
+
+            match headers.get_mut(&normalized_key) {
+                Some(existing_value) if normalized_key == "set-cookie" => {
+                    // Preserve multiple Set-Cookie lines in arrival order.
+                    // This project writes headers from a flat map; embedding explicit CRLF
+                    // keeps separate Set-Cookie header lines on re-serialization.
+                    existing_value.push_str("\r\nset-cookie: ");
+                    existing_value.push_str(&normalized_value);
+                }
+                Some(existing_value) => {
+                    // Most repeated headers are list-compatible; keep both values.
+                    existing_value.push_str(", ");
+                    existing_value.push_str(&normalized_value);
+                }
+                None => {
+                    headers.insert(normalized_key, normalized_value);
+                }
+            }
         }
     }
 
@@ -285,7 +304,6 @@ pub async fn write_response(
         );
 
         modified_headers.remove("transfer-encoding");
-        modified_headers.remove("content-encoding");
 
         // Set correct Content-Length
         modified_headers.insert("content-length".to_string(), body.len().to_string());

@@ -131,6 +131,7 @@ pub async fn forward_https_request_no_tunnel(
     version: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut last_request_host = String::new();
+    let mut last_request_uri = String::new();
     let mut last_request_whitelisted = false;
 
     loop {
@@ -150,6 +151,7 @@ pub async fn forward_https_request_no_tunnel(
                             let request: HttpsRequest = analyze_and_modify_request(&http_request.into()).into();
                             let host = host_from_https_request(&request).unwrap_or_default();
                             last_request_host = host.clone();
+                            last_request_uri = request.uri.clone();
                             last_request_whitelisted = !host.is_empty() && is_domain_whitelisted(&host);
 
                             if !last_request_whitelisted && is_domain_blacklisted(&host) {
@@ -191,7 +193,21 @@ pub async fn forward_https_request_no_tunnel(
                     body_size = http_response.body.as_ref().map_or(0, |b| b.len())
                 );
 
-                if let Some(encoding) = http_response.headers.get("content-encoding") && let Some(body) = http_response.body.as_ref() {
+                let config = get_global_config();
+                let content_type_for_routing = http_response
+                    .headers
+                    .get("content-type")
+                    .cloned()
+                    .unwrap_or_default();
+                let is_html_response = content_type_for_routing.contains("text/html");
+                let is_cloudflare_challenge_flow =
+                    last_request_uri.contains("/cdn-cgi/") ||
+                    last_request_host.ends_with("cloudflare.com") ||
+                    last_request_host.ends_with("challenges.cloudflare.com");
+                let should_rewrite_html =
+                    config.block_ads && is_html_response && !last_request_whitelisted && !is_cloudflare_challenge_flow;
+
+                if should_rewrite_html && let Some(encoding) = http_response.headers.get("content-encoding") && let Some(body) = http_response.body.as_ref() {
                     let encodings: Vec<&str> = encoding.split(',')
                         .map(|e| e.trim())
                         .collect::<Vec<_>>()
@@ -268,39 +284,54 @@ pub async fn forward_https_request_no_tunnel(
                     http_response.body = Some(body);
                 }
 
-                let config = get_global_config();
                 let mut modified_response = http_response.clone();
                 let content_type = modified_response.headers.get("content-type");
-                if let Some(ct) = content_type && ct.contains("text/html") {
-                    let body = modified_response.body.clone().unwrap_or_default();
+                if let Some(ct) = content_type && ct.contains("text/html") && config.block_ads {
+                    if last_request_whitelisted {
+                        tracing::debug!(
+                            "Skipping ad-block response rewrite for whitelisted host '{}' (request ID {})",
+                            last_request_host,
+                            req_id
+                        );
+                    } else if is_cloudflare_challenge_flow {
+                        tracing::debug!(
+                            "Skipping ad-block response rewrite for challenge flow host='{}' uri='{}' (request ID {})",
+                            last_request_host,
+                            last_request_uri,
+                            req_id
+                        );
+                    } else if let Some(body) = modified_response.body.clone() {
+                        // Only rewrite HTML when conversion is safe; avoid lossy conversions that can break challenge pages.
+                        let charset = ct
+                            .split("charset=")
+                            .nth(1)
+                            .and_then(|c| c.split(';').next())
+                            .map(|s| s.trim().to_ascii_lowercase())
+                            .unwrap_or_else(|| "utf-8".to_string());
 
-                    // Determine charset for proper decoding
-                    let charset = ct.split("charset=")
-                    .nth(1)
-                    .and_then(|c| c.split(';').next())
-                    .unwrap_or("utf-8");
-
-                    let body_text = if charset.to_lowercase() == "iso-8859-1" {
-                        body.iter().map(|&b| b as char).collect::<String>()
-                    } else {
-                        String::from_utf8_lossy(body.as_ref()).to_string()
-                    };
-
-                    modified_response.body = Some(body_text.as_bytes().to_vec());
-                    modified_response = if config.block_ads {
-                        if last_request_whitelisted {
-                            tracing::debug!(
-                                "Skipping ad-block response rewrite for whitelisted host '{}' (request ID {})",
-                                last_request_host,
-                                req_id
-                            );
-                            modified_response
+                        let rewritten_body = if charset == "iso-8859-1" {
+                            Some(body.iter().map(|&b| b as char).collect::<String>().into_bytes())
                         } else {
-                            analyze_and_modify_response(&modified_response.into()).into()
+                            match String::from_utf8(body.clone()) {
+                                Ok(s) => Some(s.into_bytes()),
+                                Err(e) => {
+                                    tracing::warn!(
+                                        "Skipping HTML rewrite for request ID {} due to non-UTF8 body: {}",
+                                        req_id,
+                                        e
+                                    );
+                                    None
+                                }
+                            }
+                        };
+
+                        if let Some(rewritten_body) = rewritten_body {
+                            modified_response.body = Some(rewritten_body);
+                            // Body is decoded/rewritten now, so remove content-encoding to keep headers consistent.
+                            modified_response.headers.remove("content-encoding");
+                            modified_response = analyze_and_modify_response(&modified_response.into()).into();
                         }
-                    } else {
-                        modified_response
-                    };
+                    }
                 }
 
                 write_response(client_tls_stream, &modified_response).await?;
