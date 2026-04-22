@@ -11,10 +11,7 @@ use uuid::Uuid;
 use crate::client::{forward_https_request_no_tunnel, forward_https_request_tunnel};
 use crate::schemas::HttpsRequest;
 use crate::utils::{
-    DNS_RESOLVER,
-    read_headers_buffer,
-    http::parse_headers,
-    stream::parse_stream,
+    DNS_RESOLVER, http::parse_headers, read_headers_buffer, stream::parse_stream,
     tls::generate_cert_for_domain,
 };
 
@@ -62,7 +59,7 @@ pub async fn process_https_request(
     // Here should implement the logic to process the HTTP request,
     // such as validate headers, methods, block ads, all that stuff that could be interesting!
 
-    let https_request_schema = HttpsRequest{
+    let https_request_schema = HttpsRequest {
         method: _method.to_string(),
         uri: _authority.to_string(),
         version: _version.to_string(),
@@ -164,7 +161,13 @@ pub async fn process_https_request_with_interception(
     // 3. Now we have both TLS streams (client_tls_stream and dest_tls_stream)
     // Here should implement the logic to intercept and process the HTTPS traffic,
     // such as validate headers, methods, block ads, all that stuff that could be interesting
-    forward_https_request_no_tunnel(req_id, &mut client_tls_stream, &mut dest_tls_stream, https_stream_parser.version.as_str()).await?;
+    forward_https_request_no_tunnel(
+        req_id,
+        &mut client_tls_stream,
+        &mut dest_tls_stream,
+        https_stream_parser.version.as_str(),
+    )
+    .await?;
 
     tracing::info!("Finished TLS Interception request ID {}", req_id);
     Ok(())

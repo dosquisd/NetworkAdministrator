@@ -58,7 +58,12 @@ impl OutputFormat {
             OutputFormat::Txt => {
                 // Implement table output
                 for res in results {
-                    println!("IP: {}, MAC: {}, ALIAS: {}", res.target_ip, res.target_mac, res.alias.as_deref().unwrap_or("N/A"));
+                    println!(
+                        "IP: {}, MAC: {}, ALIAS: {}",
+                        res.target_ip,
+                        res.target_mac,
+                        res.alias.as_deref().unwrap_or("N/A")
+                    );
                 }
             }
             OutputFormat::Json => {
@@ -70,7 +75,12 @@ impl OutputFormat {
                 // Implement CSV output
                 println!("IP,MAC,ALIAS");
                 for res in results {
-                    println!("{},{},{}", res.target_ip, res.target_mac, res.alias.as_deref().unwrap_or("N/A"));
+                    println!(
+                        "{},{},{}",
+                        res.target_ip,
+                        res.target_mac,
+                        res.alias.as_deref().unwrap_or("N/A")
+                    );
                 }
             }
             OutputFormat::Yaml => {

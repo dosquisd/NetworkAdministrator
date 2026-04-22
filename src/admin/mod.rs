@@ -4,8 +4,8 @@ pub mod routes;
 use std::net::SocketAddr;
 
 use axum::Router;
-use tower_http::cors::{CorsLayer, Any};
 use tokio::net::TcpListener;
+use tower_http::cors::{Any, CorsLayer};
 
 use crate::utils::DNS_RESOLVER;
 use routes::{create_config_routes, create_health_routes, create_list_routes};

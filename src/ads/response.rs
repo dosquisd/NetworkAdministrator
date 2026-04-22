@@ -116,7 +116,9 @@ fn inject_mutation_observer(html: &str) -> String {
     // "#;
 
     // inject_customs_script(html, script)
-    todo!("Create a function that injects the mutation observer script into the HTML. Currently not implemented.");
+    todo!(
+        "Create a function that injects the mutation observer script into the HTML. Currently not implemented."
+    );
 }
 
 pub fn inject_customs_script(html: &str, script: &str) -> String {

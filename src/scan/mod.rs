@@ -118,8 +118,12 @@ pub fn scan_network(
             .filter_map(|target_ip| {
                 pb.set_message(format!("ARP request to {}", target_ip));
 
-                let arp_response =
-                    send_arp_request(target_ip.parse().unwrap(), interface_name, timeout_secs, retries);
+                let arp_response = send_arp_request(
+                    target_ip.parse().unwrap(),
+                    interface_name,
+                    timeout_secs,
+                    retries,
+                );
 
                 pb.inc(1);
 
