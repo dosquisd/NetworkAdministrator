@@ -26,11 +26,16 @@ DEFAULT_TEMPLATE_DIR = (PROJECT_DIR / "templates").relative_to(cwd)
 DEFAULT_WAN_INTERFACE = "eth0"
 DEFAULT_LAN_INTERFACE = "wlan0"
 DEFAULT_LAN_CIDR = "192.168.1.0/24"
+DEFAULT_WAN_CIDR = "192.168.0.0/24"
 DEFAULT_HOSTAPD_SSID = "Test SSID"
 DEFAULT_SECONDARY_DNS_SERVER = "8.8.8.8"
 DEFAULT_HOSTAPD_COUNTRY_CODE = country_code
 # Generate a random passphrase for the Wi-Fi network
 DEFAULT_HOSTAPD_WPA_PASSPHRASE = secrets.token_urlsafe(32)
+
+# ntopng defaults
+DEFAULT_NTOPNG_HTTP_LISTEN = 3000
+DEFAULT_NTOPNG_DATA_DIR = "/var/lib/ntopng"
 
 
 def concatenate_binaries(array: List[int], fixed_length: int = 0) -> int:
@@ -57,6 +62,7 @@ def main(
     out_dir: str,
     wan_interface: str,
     lan_interface: str,
+    wan_cidr: str = DEFAULT_WAN_CIDR,
     lan_cidr: str,
     lan_cidr_start: Optional[str] = None,
     lan_cidr_end: Optional[str] = None,
@@ -66,6 +72,8 @@ def main(
     hostapd_ssid: str = DEFAULT_HOSTAPD_SSID,
     hostapd_country_code: str = DEFAULT_HOSTAPD_COUNTRY_CODE,
     hostapd_wpa_passphrase: str = DEFAULT_HOSTAPD_WPA_PASSPHRASE,
+    ntopng_http_listen: int = DEFAULT_NTOPNG_HTTP_LISTEN,
+    ntopng_data_dir: str = DEFAULT_NTOPNG_DATA_DIR,
     template_dir: Optional[str] = None,
     verbose: bool = False,
 ) -> None:
@@ -132,10 +140,13 @@ def main(
         "lan_cidr_broadcast": lan_cidr_broadcast,
         "lan_cidr_start": lan_cidr_start,
         "lan_cidr_end": lan_cidr_end,
+        "wan_cidr": wan_cidr,
         "hostapd_ssid": hostapd_ssid,
         "hostapd_country_code": hostapd_country_code,
         "hostapd_wpa_passphrase": hostapd_wpa_passphrase,
         "secondary_dns_server": secondary_dns_server,
+        "ntopng_http_listen": ntopng_http_listen,
+        "ntopng_data_dir": ntopng_data_dir,
     }
 
     if verbose:
@@ -169,19 +180,19 @@ if __name__ == "__main__":
         "--dns-server",
         type=str,
         default=DEFAULT_SECONDARY_DNS_SERVER,
-        help=f"The IP address of the secondary DNS server to use in the DHCP configuration (default: {DEFAULT_SECONDARY_DNS_SERVER}).",
+        help="The IP address of the secondary DNS server to use in the DHCP configuration (default: %(default)s).",
     )
     parser.add_argument(
         "--hostapd-country-code",
         type=str,
         default=DEFAULT_HOSTAPD_COUNTRY_CODE,
-        help=f"The country code for the hostapd configuration (default: {DEFAULT_HOSTAPD_COUNTRY_CODE}).",
+        help="The country code for the hostapd configuration (default: %(default)s).",
     )
     parser.add_argument(
         "--hostapd-ssid",
         type=str,
         default=DEFAULT_HOSTAPD_SSID,
-        help=f"The SSID for the hostapd configuration (default: {DEFAULT_HOSTAPD_SSID}).",
+        help="The SSID for the hostapd configuration (default: %(default)s).",
     )
     parser.add_argument(
         "--hostapd-wpa-passphrase",
@@ -196,13 +207,13 @@ if __name__ == "__main__":
         "--ip-address",
         type=str,
         default=default_ip,
-        help=f"The IP address of the server (default: your private ip is [{default_ip}]).",
+        help="The IP address of the server (default: your private ip is [%(default)s]).",
     )
     parser.add_argument(
         "--lan-cidr",
         type=str,
         default=DEFAULT_LAN_CIDR,
-        help=f"The CIDR notation for the LAN network (default: {DEFAULT_LAN_CIDR}).",
+        help="The CIDR notation for the LAN network (default: %(default)s).",
     )
     parser.add_argument(
         "--lan-cidr-gateway",
@@ -244,19 +255,31 @@ if __name__ == "__main__":
         "--lan-interface",
         type=str,
         default=DEFAULT_LAN_INTERFACE,
-        help=f"The name of the LAN interface to configure the homebrew router (default: {DEFAULT_LAN_INTERFACE}).",
+        help="The name of the LAN interface to configure the homebrew router (default: %(default)s).",
+    )
+    parser.add_argument(
+        "--ntopng-data-dir",
+        type=str,
+        default=DEFAULT_NTOPNG_DATA_DIR,
+        help="The directory where ntopng will store its data (default: %(default)s).",
+    )
+    parser.add_argument(
+        "--ntopng-http-listen",
+        type=int,
+        default=DEFAULT_NTOPNG_HTTP_LISTEN,
+        help="The port on which ntopng will listen for HTTP connections (default: %(default)s).",
     )
     parser.add_argument(
         "--template-dir",
         type=str,
         default=DEFAULT_TEMPLATE_DIR,
-        help=f"The directory where the Jinja2 templates are located (default: {DEFAULT_TEMPLATE_DIR}).",
+        help="The directory where the Jinja2 templates are located (default: %(default)s).",
     )
     parser.add_argument(
         "--out-dir",
         type=str,
         default=DEFAULT_OUT_DIR,
-        help=f"The directory where the generated inventory file will be saved (default: {DEFAULT_OUT_DIR}).",
+        help="The directory where the generated inventory file will be saved (default: %(default)s).",
     )
     parser.add_argument(
         "-v",
@@ -265,10 +288,16 @@ if __name__ == "__main__":
         help="Enable verbose output for debugging purposes.",
     )
     parser.add_argument(
+        "--wan-cidr",
+        type=str,
+        default=DEFAULT_WAN_CIDR,
+        help="The CIDR notation for the WAN network (default: %(default)s).",
+    )
+    parser.add_argument(
         "--wan-interface",
         type=str,
         default=DEFAULT_WAN_INTERFACE,
-        help=f"The name of the WAN interface to configure the homebrew router (default: {DEFAULT_WAN_INTERFACE}).",
+        help="The name of the WAN interface to configure the homebrew router (default: %(default)s).",
     )
 
     args = parser.parse_args()

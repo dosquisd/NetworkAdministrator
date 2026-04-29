@@ -188,6 +188,72 @@
       state: stopped
       enabled: true
 
+# https://www.ntop.org/support/documentation/software-installation/
+- name: Configure ntopng for network monitoring
+  hosts: servers
+  become: yes
+  tasks:
+  - name: Install ntopng  (Just for RaspbianOS arm64)
+    when:
+    - ansible_facts['lsb']['id'] == 'Debian'
+    - ansible_facts['architecture'] == 'aarch64'
+    block:
+    - name: Add the official ntop repository
+      ansible.builtin.get_url:
+        url: https://packages.ntop.org/RaspberryPI/apt-ntop.deb
+        dest: /tmp/apt-ntop.deb
+        mode: '0664'
+
+    - name: Install the ntop repository package
+      ansible.builtin.apt:
+        deb: /tmp/apt-ntop.deb
+
+    - name: Install ntopng package
+      ansible.builtin.apt:
+        name:
+        - nprobe
+        - ntopng
+        state: present
+        update_cache: yes
+        clean: yes
+
+    - name: Mark ntopng as installed
+      ansible.builtin.set_fact:
+        ntopng_installed: true
+
+  - name: Deploy ntopng
+    when: ntopng_installed | default(false)
+    block:
+    # Implement these steps in the future, not yet, my current infraestructure is simple and I want to keep it that way meanwhile
+    # - name: Allow ntopng UI from LAN
+    #   ansible.builtin.shell: nft add rule inet homebrew_filter input ip saddr {{ lan_network }} tcp dport {{ ntopng_port }} accept || true
+
+    # - name: Drop other ntopng UI access
+    #   ansible.builtin.shell: nft add rule inet homebrew_filter input tcp dport {{ ntopng_port }} drop || true
+
+    - name: Deploy ntopng config
+      when: ntopng_installed | default(false)
+      ansible.builtin.template:
+        src: ../templates/etc/ntopng/ntopng.conf.j2
+        dest: /etc/ntopng/ntopng.conf
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart ntopng
+
+    - name: Ensure ntopng service enabled and started
+      when: ntopng_installed | default(false)
+      ansible.builtin.systemd:
+        name: ntopng
+        enabled: yes
+        state: started
+
+  handlers:
+  - name: Restart ntopng
+    ansible.builtin.systemd:
+      name: ntopng
+      state: restarted
+
 - name: Start router services after interface setup
   hosts: servers
   become: yes
@@ -213,5 +279,11 @@
   - name: Ensure hostapd service is started and enabled
     ansible.builtin.systemd:
       name: hostapd
+      state: started
+      enabled: true
+    
+  - name: Ensure ntopng service is started and enabled
+    ansible.builtin.systemd:
+      name: ntopng
       state: started
       enabled: true
