@@ -281,7 +281,7 @@
       name: hostapd
       state: started
       enabled: true
-    
+
   - name: Ensure ntopng service is started and enabled
     ansible.builtin.systemd:
       name: ntopng

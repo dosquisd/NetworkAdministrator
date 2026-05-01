@@ -5,6 +5,7 @@ import secrets
 import socket
 import urllib.request
 from pathlib import Path
+from pprint import pprint
 from typing import List, Optional
 
 from jinja2 import Environment, FileSystemLoader
@@ -60,6 +61,7 @@ def main(
     username: str,
     ip_address: str,
     out_dir: str,
+    ssh_private_key_file: str,
     wan_interface: str,
     lan_interface: str,
     wan_cidr: str = DEFAULT_WAN_CIDR,
@@ -147,12 +149,12 @@ def main(
         "secondary_dns_server": secondary_dns_server,
         "ntopng_http_listen": ntopng_http_listen,
         "ntopng_data_dir": ntopng_data_dir,
+        "ssh_private_key_file": str(Path(ssh_private_key_file).absolute()),
     }
 
     if verbose:
-        print(
-            f"[+] Generating inventory content with the following server information: {server_info}"
-        )
+        print("[+] Generating inventory content with the following server information:")
+        pprint(server_info)
 
     output_file = (Path(out_dir) / "inventory.ini").resolve()
     environment = Environment(loader=FileSystemLoader(template_dir))  # type: ignore
@@ -270,6 +272,11 @@ if __name__ == "__main__":
         help="The port on which ntopng will listen for HTTP connections (default: %(default)s).",
     )
     parser.add_argument(
+        "--ssh-key-file",
+        type=str,
+        help="The path to the SSH private key file to use for Ansible connections.",
+    )
+    parser.add_argument(
         "--template-dir",
         type=str,
         default=DEFAULT_TEMPLATE_DIR,
@@ -305,6 +312,7 @@ if __name__ == "__main__":
         username=args.username,
         ip_address=args.ip_address,
         out_dir=args.out_dir,
+        ssh_private_key_file=args.ssh_key_file,
         wan_interface=args.wan_interface,
         lan_interface=args.lan_interface,
         lan_cidr=args.lan_cidr,
